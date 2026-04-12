@@ -5,6 +5,8 @@ import { LevaWrapper } from "@core";
 import { Canvas } from "@react-three/fiber";
 import { WebGPURenderer } from "three/webgpu";
 import { useState } from "react";
+import Stage from "../components/Stage";
+import Light from "../components/Light";
 
 export default function App() {
   const [frameloop, setFrameloop] = useState("never");
@@ -38,8 +40,9 @@ export default function App() {
       >
         <AdaptiveDpr pixelated />
         <CameraControls makeDefault />
-        <BasicMesh />
         <CanvasCapture />
+        <Stage />
+        <Light />
       </Canvas>
     </>
   );
