@@ -43,7 +43,7 @@ const Light = forwardRef<LightRef, LightProps>(function Light(props, ref) {
         shadow-bias={-0.001}
       />
 
-      <Environment preset="city" />
+      <Environment preset="city" environmentIntensity={0.5} />
     </>
   );
 });

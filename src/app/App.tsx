@@ -1,5 +1,4 @@
 import { AdaptiveDpr, CameraControls } from "@react-three/drei";
-import BasicMesh from "../components/BasicMesh";
 import { CanvasCapture } from "@core";
 import { LevaWrapper } from "@core";
 import { Canvas } from "@react-three/fiber";
@@ -7,10 +6,29 @@ import { WebGPURenderer } from "three/webgpu";
 import { useState } from "react";
 import Stage from "../components/Stage";
 import Light from "../components/Light";
+import Boids from "../components/Boids";
+
+
+
+interface ComponentProps {
+  radius: number;
+  lightPos: [number, number, number];
+  rayCount: number;
+}
+
 
 export default function App() {
   const [frameloop, setFrameloop] = useState("never");
 
+
+
+  const props: ComponentProps = {
+    radius: 10,
+    lightPos: [100, 100, 0],
+    rayCount: 6,
+  };
+
+  
   return (
     <>
       <LevaWrapper />
@@ -29,9 +47,6 @@ export default function App() {
             powerPreference: "high-performance",
             antialias: true,
             alpha: false,
-            stencil: false,
-            shadowMap: true,
-            preserveDrawingBuffer: true,
           });
           return renderer.init().then(() => renderer);
         }}
@@ -42,7 +57,8 @@ export default function App() {
         <CameraControls makeDefault />
         <CanvasCapture />
         <Stage />
-        <Light />
+        <Light radius={props.radius} lightPos={props.lightPos} />
+        <Boids radius={props.radius} count={10000} />
       </Canvas>
     </>
   );
