@@ -4,9 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="textures/favicon.png" type="image/png">
+    <style>
+        body { margin: 0; overflow: hidden; background: #222; color: white; font-family: sans-serif; }
+        
+        /* Push tracking canvas and video to the background */
+        canvas, video { position: absolute; top: 0; left: 0; pointer-events: none; z-index: -1; }
+        
+        #stats { position: absolute; top: 10px; left: 10px; z-index: 10; background: rgba(0,0,0,0.5); padding: 10px; }
+        
+        /* Bring r3f root to the front */
+        #root { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+    </style>
     <title>r3f template</title>
 </head>
 <body>
+    <script src="/src/demo.js" type="module"></script>
+    <div id="stats">
+        Status: <span id="status">Initializing...</span><br>
+        Hands: <span id="hand-count">0</span>
+    </div>
     <div id="root"></div>
     <script type="module" src="./src/index.jsx"></script>
 </body>

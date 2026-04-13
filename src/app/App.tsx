@@ -1,13 +1,14 @@
-import { AdaptiveDpr, CameraControls } from "@react-three/drei";
+import { AdaptiveDpr, CameraControls, Hud, OrthographicCamera } from "@react-three/drei";
 import { CanvasCapture } from "@core";
 import { LevaWrapper } from "@core";
 import { Canvas } from "@react-three/fiber";
 import { WebGPURenderer } from "three/webgpu";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Stage from "../components/Stage";
 import Light from "../components/Light";
 import Boids from "../components/Boids";
-
+import HandDebug from "../components/HandDebug";
+import { initHandTracking } from "@core/interaction/tracker";
 
 
 interface ComponentProps {
@@ -20,15 +21,17 @@ interface ComponentProps {
 export default function App() {
   const [frameloop, setFrameloop] = useState("never");
 
-
-
   const props: ComponentProps = {
     radius: 10,
     lightPos: [100, 100, 0],
     rayCount: 6,
   };
 
-  
+  useEffect(() => {
+    initHandTracking();
+  }, []);
+
+
   return (
     <>
       <LevaWrapper />
@@ -59,6 +62,13 @@ export default function App() {
         <Stage />
         <Light radius={props.radius} lightPos={props.lightPos} />
         <Boids radius={props.radius} count={10000} />
+
+        <Hud>
+          {/* OrthographicCamera 預設會自動對齊螢幕像素長寬，中心點為 (0,0) */}
+          <OrthographicCamera makeDefault position={[0, 0, 10]} />
+
+          <HandDebug />
+        </Hud>
       </Canvas>
     </>
   );
