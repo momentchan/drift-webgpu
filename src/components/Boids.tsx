@@ -227,7 +227,6 @@ export default function Boids({ radius, count }: BoidsProps) {
     const material = new THREE.MeshStandardNodeMaterial({
       roughness: 0.5,
       metalness: 0.2,
-      color: 0x88ccff,
     });
     
     // --- Vertex Node: Scale & Rotation ---

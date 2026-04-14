@@ -9,6 +9,8 @@ import Light from "../components/Light";
 import Boids from "../components/Boids";
 import HandDebug from "../components/HandDebug";
 import { initHandTracking } from "@core/interaction/tracker";
+import Effects from "../components/Effects";
+import { Character } from "../components/character/Character";
 
 
 interface ComponentProps {
@@ -28,7 +30,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    initHandTracking();
+    // initHandTracking();
   }, []);
 
 
@@ -58,15 +60,16 @@ export default function App() {
       >
         <AdaptiveDpr pixelated />
         <CameraControls makeDefault />
+        <Effects/>
         <CanvasCapture />
-        <Stage />
+        <Character/>
         <Light radius={props.radius} lightPos={props.lightPos} />
-        <Boids radius={props.radius} count={10000} />
+        <Boids radius={props.radius} count={8192} />
 
-        <Hud>
+        {/* <Hud>
           <OrthographicCamera makeDefault position={[0, 0, 10]} />
           <HandDebug />
-        </Hud>
+        </Hud> */}
       </Canvas>
     </>
   );
