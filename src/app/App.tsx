@@ -64,9 +64,7 @@ export default function App() {
         <Boids radius={props.radius} count={10000} />
 
         <Hud>
-          {/* OrthographicCamera 預設會自動對齊螢幕像素長寬，中心點為 (0,0) */}
           <OrthographicCamera makeDefault position={[0, 0, 10]} />
-
           <HandDebug />
         </Hud>
       </Canvas>
