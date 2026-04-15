@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useMemo } from "react";
 import { useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three/webgpu";
 import { WebGPURenderer } from "three/webgpu";
@@ -53,6 +53,8 @@ export default function Effects() {
 
   const postProcessingRef = useRef<THREE.PostProcessing | null>(null);
   const godraysPassRef = useRef<any>(null);
+  const focusTarget = useMemo(() => new THREE.Vector3(0, 0, 0), []);
+  const cameraWorldPos = useMemo(() => new THREE.Vector3(), []);
 
   const uParams = useRef({
     focusDist: uniform(0),
@@ -163,6 +165,11 @@ export default function Effects() {
   }, [gl, scene, camera, grCfg.enabled, sunLight]);
 
   useFrame(() => {
+    if (dofCfg.enabled && dofCfg.autofocus) {
+      camera.getWorldPosition(cameraWorldPos);
+      uParams.current.focusDist.value = cameraWorldPos.distanceTo(focusTarget);
+    }
+
     if (postProcessingRef.current) {
       postProcessingRef.current.render();
     }

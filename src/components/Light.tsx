@@ -31,7 +31,7 @@ const Light = forwardRef<LightRef, LightProps>(function Light(props, ref) {
 
       <directionalLight
         ref={directionalLight}
-        intensity={6}
+        intensity={2}
         position={props.lightPos}
         castShadow
         shadow-mapSize={[1024, 1024]}

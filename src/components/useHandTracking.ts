@@ -107,6 +107,7 @@ export function useHandTracking(
       if (camera.video) {
         document.body.appendChild(camera.video);
         camera.video.style.display = 'none';
+        handStore.video = camera.video;
       }
 
       const worker = new Worker('/handTracking.worker.js');
@@ -157,6 +158,7 @@ export function useHandTracking(
       workerRef.current = null;
       cameraRef.current?.dispose();
       cameraRef.current = null;
+      handStore.video = null;
       ready.current = false;
     };
   }, []);

@@ -68,7 +68,7 @@ export function useCharacterAssets() {
         } else if (!child.name.includes('Person')) {
           child.material = detailMat;
         } else {
-          child.visible = false;
+          // child.visible = false;
         }
       }
     });

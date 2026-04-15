@@ -16,7 +16,7 @@ export const Character = ({ position = [0, 0, 0], scale = 1, visible = true }: C
   const isInitialRender = useRef(true);
 
   // Start with index 0 (e.g., 'Drift')
-  const [index, setIndex] = useState(0); 
+  const [index, setIndex] = useState(1); 
   const [blendRate, setBlendRate] = useState(0);
 
   const transT = 3;

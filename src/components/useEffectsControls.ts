@@ -15,7 +15,7 @@ export function useEffectsControls() {
   }, { collapsed: true });
 
   const dofParamsTPS = useControls('Effects.DoF', {
-    enabled: { value: false, label: 'Enable Depth of Field' },
+    enabled: { value: true, label: 'Enable Depth of Field' },
     autofocus: { value: true, label: 'Auto Focus Character' },
     focusDistance: { value: 1.3, min: 0, max: 100, step: 0.1, render: (get) => !get('Effects.DoF.TPS.autofocus') },
     focalLength: { value: 25.0, min: 0.01, max: 100, step: 0.1 },

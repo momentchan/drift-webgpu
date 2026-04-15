@@ -4,7 +4,6 @@ import { LevaWrapper } from "@core";
 import { Canvas } from "@react-three/fiber";
 import { WebGPURenderer } from "three/webgpu";
 // import { useState } from "react";
-import Stage from "../components/Stage";
 import Light from "../components/Light";
 import Boids from "../components/Boids";
 import HandDebug from "../components/HandDebug";
@@ -13,6 +12,9 @@ import Effects from "../components/Effects";
 import { Character } from "../components/character/Character";
 import { Inspector } from "three/addons/inspector/Inspector.js";
 import { useControls } from "leva";
+import CameraRotator from "../components/CameraRotator";
+import * as THREE from "three/webgpu";
+import HandDebugCanvas from "../components/HandDebugCanvas";
 
 interface ComponentProps {
   radius: number;
@@ -63,14 +65,23 @@ export default function App() {
         {/* <fogExp2 attach="fog" args={[fog.color, fog.density]} /> */}
         <color attach="background" args={['#000000']} />
         <AdaptiveDpr pixelated />
-        <CameraControls makeDefault />
+        <CameraRotator />
+        {/* <CameraControls makeDefault /> */}
         <Effects />
         <CanvasCapture />
         <Character />
         <Light radius={props.radius} lightPos={props.lightPos} />
         <Boids radius={props.radius} count={8192} />
         <HandDebug />
+
+
+        <mesh>
+          <sphereGeometry args={[15, 32, 32]} />
+          <meshBasicMaterial color="#000000" side={THREE.BackSide} />
+        </mesh>
       </Canvas>
+
+      <HandDebugCanvas />
     </>
   );
 }

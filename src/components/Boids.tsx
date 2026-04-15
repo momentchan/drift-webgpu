@@ -43,8 +43,12 @@ export default function Boids({ radius, count }: BoidsProps) {
       noiseFrequency: { value: 0.05, min: 0, max: 0.2 },
       noiseSpeed: { value: 0.1, min: 0, max: 0.5 },
 
-      maxSpeed: { value: 5, min: 0, max: 20 },
+      maxSpeed: { value: 2.5, min: 0, max: 20 },
       maxForce: { value: 10, min: 0, max: 20 },
+
+      openColor: { value: '#66b3ff' },
+      closeColor: { value: '#ff4d26' },
+      baseColor: { value: '#ffffff' },
     }),
   });
 
@@ -55,11 +59,12 @@ export default function Boids({ radius, count }: BoidsProps) {
 
     for (let i = 0; i < posData.length; i += 4) {
       const pos = getRandomVectorInsideSphere(radius);
-      posData[i] = pos.x; posData[i + 1] = pos.y; posData[i + 2] = pos.z; posData[i + 3] = 1.0;
+      posData[i] = pos.x; posData[i + 1] = pos.y; posData[i + 2] = pos.z;
+      posData[i + 3] = 0.0; // hand state: -1 close, 0 neutral, +1 open
 
       const vel = getRandomVectorInsideSphere(2);
       velData[i] = vel.x; velData[i + 1] = vel.y; velData[i + 2] = vel.z;
-      velData[i + 3] = 1.0; // init debug (w component) to 1.0
+      velData[i + 3] = 0.0; // interaction intensity (0..1)
     }
 
     const posBuffer = instancedArray(posData, 'vec4');
@@ -93,6 +98,9 @@ export default function Boids({ radius, count }: BoidsProps) {
 
     const uMaxSpeed = uniform(props.maxSpeed);
     const uMaxForce = uniform(props.maxForce);
+    const uOpenColor = uniform(new THREE.Color(props.openColor));
+    const uCloseColor = uniform(new THREE.Color(props.closeColor));
+    const uBaseColor = uniform(new THREE.Color(props.baseColor));
 
     // Limit function
     const limit = Fn((inputs: any) => {
@@ -192,6 +200,9 @@ export default function Boids({ radius, count }: BoidsProps) {
       const pp_ndc = pp_clip.xy.div(pp_clip.w);
       const touchSteer = vec3(0.0).toVar();
 
+      const interactiveVal = velDataEl.w.toVar();
+      const handState = pos.w.toVar();
+
       Loop({ type: 'uint', start: 0, end: MAX_INSTANCES, condition: '<' }, ({ i }) => {
         const touchPos = sharedHandPosNode.element(i)
 
@@ -202,6 +213,9 @@ export default function Boids({ radius, count }: BoidsProps) {
           const decay = smoothstep(uTouchRange, 0.0, dist);
           const steerWorld = uInvMVP.mul(vec4(dirNdc, 0.0, 0.0)).xyz;
           touchSteer.addAssign(steerWorld.mul(decay).mul(touchPos.z));
+
+          interactiveVal.addAssign(decay.mul(uDelta).mul(5.0));
+          handState.addAssign(touchPos.z.mul(decay).mul(uDelta).mul(10.0));
         });
       });
 
@@ -230,11 +244,13 @@ export default function Boids({ radius, count }: BoidsProps) {
 
       pos.xyz.addAssign(vel.mul(uDelta));
 
-      // Update debug variable
-      let debugVar = velDataEl.w.toVar();
-      debugVar.subAssign(uDelta.mul(1.0));
-      debugVar.assign(clamp(debugVar, 0.3, 3.0));
-      velDataEl.w.assign(debugVar);
+      interactiveVal.subAssign(uDelta.mul(1.0));
+      interactiveVal.assign(clamp(interactiveVal, 0.0, 1.0));
+      velDataEl.w.assign(interactiveVal);
+
+      handState.assign(mix(handState, float(0.0), uDelta.mul(2.0)));
+      handState.assign(clamp(handState, -1.0, 1.0));
+      pos.w.assign(handState);
     });
 
     const compute = computeMovement().compute(count);
@@ -251,11 +267,12 @@ export default function Boids({ radius, count }: BoidsProps) {
 
     // Scale based on world position and noise
     const n = mx_noise_float(wpos.yz.mul(0.2)).add(1.0).mul(0.5);
-    const debug = velDataEl.w.mul(0.8);
+    const interactiveVal = velDataEl.w;  // 0..1 intensity
+    const handState = posBuffer.element(instanceIndex).w; // -1..1 open/close
 
     const scale = vec3(1.0, 1.0, mix(5, 0.5, n))
       .mul(mix(1.0, 10.0, n))
-      .mul(mix(1.0, 3.0, debug));
+      .mul(mix(1.0, 2.0, interactiveVal));
 
     // const s = mix(5, 0.5, n)
 
@@ -278,6 +295,12 @@ export default function Boids({ radius, count }: BoidsProps) {
       .add(zAxis.mul(scaledPos.z));
 
     material.positionNode = rotatedPos.add(wpos);
+
+    const handStateNorm = handState.mul(0.5).add(0.5); // [-1,1] -> [0,1]
+    const handColor = mix(uCloseColor, uOpenColor, handStateNorm);
+    const baseColor = vec3(uBaseColor.r, uBaseColor.g, uBaseColor.b);
+    material.colorNode = baseColor;
+    material.emissiveNode = handColor.mul(interactiveVal).mul(2);
 
     const geometry = new THREE.BoxGeometry(0.002, 0.02, 0.02); 
     // const sourceMesh = pyramid.scene.children.find(
@@ -302,7 +325,8 @@ export default function Boids({ radius, count }: BoidsProps) {
       uniforms: {
         uTime, uDelta, uMaxSpeed, uMaxForce, uSepDist, uAliDist, uCohDist,
         uSepWeight, uAliWeight, uCohWeight, uAvoidWallWeight,
-        uNoiseWeight, uNoiseFreq, uNoiseSpeed, uMVP, uInvMVP, uAspect, uTouchRange, uTouchWeight, uCenterWeight
+        uNoiseWeight, uNoiseFreq, uNoiseSpeed, uMVP, uInvMVP, uAspect, uTouchRange, uTouchWeight, uCenterWeight,
+        uOpenColor, uCloseColor, uBaseColor
       }
     };
   }, [count, radius, pyramid]);
@@ -340,6 +364,9 @@ export default function Boids({ radius, count }: BoidsProps) {
     uniforms.uNoiseWeight.value = props.noiseWeight;
     uniforms.uNoiseFreq.value = props.noiseFrequency;
     uniforms.uNoiseSpeed.value = props.noiseSpeed;
+    uniforms.uOpenColor.value.set(props.openColor);
+    uniforms.uCloseColor.value.set(props.closeColor);
+    uniforms.uBaseColor.value.set(props.baseColor);
 
     const renderer = state.gl as unknown as WebGPURenderer;
     renderer.compute(computeNode);
