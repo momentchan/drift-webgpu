@@ -1,8 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
-import { 
-  Fn, If, instancedArray, instanceIndex, length, positionLocal, uniform, 
+import {
+  Fn, If, instancedArray, instanceIndex, length, positionLocal, uniform,
   Loop, vec3, vec4, vec2, float, normalize, cross, mix, mx_noise_float, clamp, dot, smoothstep
 } from 'three/tsl';
 import { getRandomVectorInsideSphere } from "@core/utils/tsl/math";
@@ -10,6 +10,7 @@ import { WebGPURenderer } from 'three/webgpu';
 import { folder, useControls } from 'leva';
 import { curlNoise3D } from '@core/utils/tsl/noise';
 import { MAX_INSTANCES, sharedHandPosNode } from '@core/interaction/store';
+import { useGLTF } from '@react-three/drei';
 
 interface BoidsProps {
   radius: number;
@@ -17,6 +18,11 @@ interface BoidsProps {
 }
 
 export default function Boids({ radius, count }: BoidsProps) {
+
+  const pyramid = useGLTF('/models/pyramid.glb');
+
+
+
   const props = useControls({
     'Boids': folder({
       separationDistance: { value: 1, min: 0, max: 5 },
@@ -28,9 +34,11 @@ export default function Boids({ radius, count }: BoidsProps) {
       cohesionWeight: { value: 0.5, min: 0, max: 10 },
       avoidWallWeight: { value: 5, min: 0, max: 10 },
       noiseWeight: { value: 1.2, min: 0, max: 5 },
-      
+
       touchWeight: { value: 200, min: 0, max: 200 },
       touchRange: { value: 0.5, min: 0, max: 5 },
+
+      centerWeight: { value: 5, min: 0, max: 10 },
 
       noiseFrequency: { value: 0.05, min: 0, max: 0.2 },
       noiseSpeed: { value: 0.1, min: 0, max: 0.5 },
@@ -47,10 +55,10 @@ export default function Boids({ radius, count }: BoidsProps) {
 
     for (let i = 0; i < posData.length; i += 4) {
       const pos = getRandomVectorInsideSphere(radius);
-      posData[i] = pos.x; posData[i + 1] = pos.y; posData[i + 2] = pos.z; posData[i + 3] = 1.0; 
+      posData[i] = pos.x; posData[i + 1] = pos.y; posData[i + 2] = pos.z; posData[i + 3] = 1.0;
 
-      const vel = getRandomVectorInsideSphere(2); 
-      velData[i] = vel.x; velData[i + 1] = vel.y; velData[i + 2] = vel.z; 
+      const vel = getRandomVectorInsideSphere(2);
+      velData[i] = vel.x; velData[i + 1] = vel.y; velData[i + 2] = vel.z;
       velData[i + 3] = 1.0; // init debug (w component) to 1.0
     }
 
@@ -73,9 +81,11 @@ export default function Boids({ radius, count }: BoidsProps) {
     const uAliWeight = uniform(props.alignmentWeight);
     const uCohWeight = uniform(props.cohesionWeight);
     const uAvoidWallWeight = uniform(props.avoidWallWeight);
-    
+
     const uTouchRange = uniform(props.touchRange);
     const uTouchWeight = uniform(props.touchWeight);
+
+    const uCenterWeight = uniform(props.centerWeight);
 
     const uNoiseWeight = uniform(props.noiseWeight);
     const uNoiseFreq = uniform(props.noiseFrequency);
@@ -85,15 +95,18 @@ export default function Boids({ radius, count }: BoidsProps) {
     const uMaxForce = uniform(props.maxForce);
 
     // Limit function
-    const limit = Fn(([vec, maxVal]) => {
+    const limit = Fn((inputs: any) => {
+      const vec = inputs[0];
+      const maxVal = inputs[1];
       const l = length(vec);
       return l.greaterThan(maxVal).and(l.greaterThan(0.0)).select(vec.mul(maxVal).div(l), vec);
-    });
+    }) as any;
 
     // Avoid wall boundary
-    const avoidWall = Fn(([pos]) => {
+    const avoidWall = Fn((inputs: any) => {
+      const pos = inputs[0];
       return length(pos).greaterThan(uRadius).select(normalize(pos).negate(), vec3(0.0));
-    });
+    }) as any;
 
     const computeMovement = Fn(() => {
       const pos = posBuffer.element(instanceIndex);
@@ -167,13 +180,13 @@ export default function Boids({ radius, count }: BoidsProps) {
       force.addAssign(aliSteer.mul(uAliWeight));
       force.addAssign(cohSteer.mul(uCohWeight));
       force.addAssign(avoidWall(pos.xyz).mul(uAvoidWallWeight));
-      
+
       // Center avoid logic
       const orthBase = normalize(cross(pos.xyz, vec3(0.0, 1.0, 0.0)));
       const orth = orthBase.mul(dot(vel, orthBase).mul(0.2));
       const forward = normalize(pos.xyz);
-      const centerSteer = smoothstep(3.0, 0.0, length(pos.xyz)).mul(forward.add(orth));
-      
+      const centerSteer = smoothstep(1.0, 0.0, length(pos.xyz)).mul(forward.add(orth));
+
       // Touch interaction logic (repel from hands in NDC space)
       const pp_clip = uMVP.mul(vec4(pos.xyz, 1.0));
       const pp_ndc = pp_clip.xy.div(pp_clip.w);
@@ -181,7 +194,7 @@ export default function Boids({ radius, count }: BoidsProps) {
 
       Loop({ type: 'uint', start: 0, end: MAX_INSTANCES, condition: '<' }, ({ i }) => {
         const touchPos = sharedHandPosNode.element(i)
-        
+
         // Only process if touchPos is active
         If(touchPos.z.notEqual(0), () => {
           const dirNdc = pp_ndc.sub(touchPos.xy).mul(vec2(uAspect, 1.0));
@@ -193,26 +206,28 @@ export default function Boids({ radius, count }: BoidsProps) {
       });
 
       // Combine center avoid and touch steer
-      force.addAssign(centerSteer.add(touchSteer).mul(uTouchWeight));
+      force.addAssign(touchSteer.mul(uTouchWeight));
+      force.addAssign(centerSteer.mul(uCenterWeight));
 
       // Curl noise field
-      const baseNoiseField = Fn(([p]) => {
+      const baseNoiseField = Fn((inputs: any) => {
+        const p = inputs[0];
         return vec3(
-            mx_noise_float(p),
-            mx_noise_float(p.add(vec3(19.1, 33.4, 47.2))), 
-            mx_noise_float(p.add(vec3(74.2, -124.5, 99.4)))
+          mx_noise_float(p),
+          mx_noise_float(p.add(vec3(19.1, 33.4, 47.2))),
+          mx_noise_float(p.add(vec3(74.2, -124.5, 99.4)))
         );
-      });
+      }) as any;
 
       const noiseInput = pos.xyz.mul(uNoiseFreq).add(uTime.mul(uNoiseSpeed));
-      const noiseSteer = curlNoise3D(noiseInput, baseNoiseField);
+      const noiseSteer = (curlNoise3D as any)(noiseInput, baseNoiseField);
       force.addAssign(noiseSteer.mul(uNoiseWeight));
 
       // Update velocity and apply smoothing
       let newVel = vel.add(force.mul(uDelta)).toVar();
       // newVel.assign(limit(newVel, uMaxSpeed));
-      vel.assign(mix(vel, newVel, 0.5)); 
-      
+      vel.assign(mix(vel, newVel, 0.5));
+
       pos.xyz.addAssign(vel.mul(uDelta));
 
       // Update debug variable
@@ -228,26 +243,31 @@ export default function Boids({ radius, count }: BoidsProps) {
       roughness: 0.5,
       metalness: 0.2,
     });
-    
+
     // --- Vertex Node: Scale & Rotation ---
     const wpos = posBuffer.element(instanceIndex).xyz;
     const velDataEl = velBuffer.element(instanceIndex);
     const vel = velDataEl.xyz;
-    
+
     // Scale based on world position and noise
     const n = mx_noise_float(wpos.yz.mul(0.2)).add(1.0).mul(0.5);
     const debug = velDataEl.w.mul(0.8);
 
-    const scale = vec3(1.0, 1.0, mix(1.0, 0.5, n))
+    const scale = vec3(1.0, 1.0, mix(5, 0.5, n))
       .mul(mix(1.0, 10.0, n))
-      .mul(0.2)
       .mul(mix(1.0, 3.0, debug));
+
+    // const s = mix(5, 0.5, n)
+
+    // const scale = vec3(s, s, 1.0)
+    //   .mul(mix(1.0, 10.0, n))
+    //   .mul(mix(1.0, 3.0, debug)).mul(10);
 
     const scaledPos = positionLocal.mul(scale);
 
     // Rotation based on velocity
-    const dir = normalize(vel.add(vec3(0.00001))); 
-    const up = normalize(vec3(0.00001, 1.0, 0.00001)); 
+    const dir = normalize(vel.add(vec3(0.00001)));
+    const up = normalize(vec3(0.00001, 1.0, 0.00001));
 
     const xAxis = normalize(cross(up, dir));
     const yAxis = cross(dir, xAxis);
@@ -259,30 +279,40 @@ export default function Boids({ radius, count }: BoidsProps) {
 
     material.positionNode = rotatedPos.add(wpos);
 
-    const geometry = new THREE.BoxGeometry(0.02, 0.2, 0.2); 
+    const geometry = new THREE.BoxGeometry(0.002, 0.02, 0.02); 
+    // const sourceMesh = pyramid.scene.children.find(
+    //   (child): child is THREE.Mesh => child instanceof THREE.Mesh
+    // );
+
+    // if (!sourceMesh) {
+    //   throw new Error('Pyramid model does not contain a mesh.');
+    // }
+
+    // const geometry = sourceMesh.geometry.clone();
+
     const standardMesh = new THREE.Mesh(geometry, material);
-    standardMesh.count = count; 
+    standardMesh.count = count;
     standardMesh.castShadow = true;
     standardMesh.receiveShadow = true;
     standardMesh.frustumCulled = false;
 
-    return { 
-      computeNode: compute, 
+    return {
+      computeNode: compute,
       mesh: standardMesh,
-      uniforms: { 
-        uTime, uDelta, uMaxSpeed, uMaxForce, uSepDist, uAliDist, uCohDist, 
+      uniforms: {
+        uTime, uDelta, uMaxSpeed, uMaxForce, uSepDist, uAliDist, uCohDist,
         uSepWeight, uAliWeight, uCohWeight, uAvoidWallWeight,
-        uNoiseWeight, uNoiseFreq, uNoiseSpeed, uMVP, uInvMVP, uAspect, uTouchRange, uTouchWeight
+        uNoiseWeight, uNoiseFreq, uNoiseSpeed, uMVP, uInvMVP, uAspect, uTouchRange, uTouchWeight, uCenterWeight
       }
     };
-  }, [count, radius]);
+  }, [count, radius, pyramid]);
 
   useFrame((state, delta) => {
     // Update MVP matrices for touch interaction
     const proj = state.camera.projectionMatrix;
     const view = state.camera.matrixWorldInverse;
     const mvp = new THREE.Matrix4().multiplyMatrices(proj, view);
-    
+
     uniforms.uMVP.value.copy(mvp);
     uniforms.uInvMVP.value.copy(mvp).invert();
     uniforms.uAspect.value = state.size.width / state.size.height;
@@ -290,7 +320,7 @@ export default function Boids({ radius, count }: BoidsProps) {
     // Update uniform values
     uniforms.uTime.value = state.clock.elapsedTime;
     uniforms.uDelta.value = Math.min(delta, 1 / 30);
-    
+
     uniforms.uMaxSpeed.value = props.maxSpeed;
     uniforms.uMaxForce.value = props.maxForce;
 
@@ -305,6 +335,7 @@ export default function Boids({ radius, count }: BoidsProps) {
 
     uniforms.uTouchRange.value = props.touchRange;
     uniforms.uTouchWeight.value = props.touchWeight;
+    uniforms.uCenterWeight.value = props.centerWeight;
 
     uniforms.uNoiseWeight.value = props.noiseWeight;
     uniforms.uNoiseFreq.value = props.noiseFrequency;

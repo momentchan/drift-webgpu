@@ -12,27 +12,24 @@ import { initHandTracking } from "@core/interaction/tracker";
 import Effects from "../components/Effects";
 import { Character } from "../components/character/Character";
 
-
 interface ComponentProps {
   radius: number;
   lightPos: [number, number, number];
   rayCount: number;
 }
 
-
 export default function App() {
   const [frameloop, setFrameloop] = useState("never");
 
   const props: ComponentProps = {
-    radius: 10,
-    lightPos: [100, 100, 0],
+    radius: 7.5,
+    lightPos: [120, 120, 0],
     rayCount: 6,
   };
 
   useEffect(() => {
     // initHandTracking();
   }, []);
-
 
   return (
     <>
@@ -48,7 +45,7 @@ export default function App() {
         }}
         gl={(canvas) => {
           const renderer = new WebGPURenderer({
-            ...canvas,
+            ...canvas as any,
             powerPreference: "high-performance",
             antialias: true,
             alpha: false,
@@ -58,11 +55,12 @@ export default function App() {
         dpr={[1, 2]}
         performance={{ min: 0.5, max: 1 }}
       >
+        <color attach="background" args={['#000000']} />
         <AdaptiveDpr pixelated />
         <CameraControls makeDefault />
-        <Effects/>
+        <Effects />
         <CanvasCapture />
-        <Character/>
+        <Character />
         <Light radius={props.radius} lightPos={props.lightPos} />
         <Boids radius={props.radius} count={8192} />
 

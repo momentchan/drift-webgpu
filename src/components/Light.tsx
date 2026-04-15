@@ -1,7 +1,6 @@
-import { Environment } from "@react-three/drei";
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { Environment, useHelper } from "@react-three/drei";
+import { forwardRef, useImperativeHandle, useRef } from "react";
 import * as THREE from "three";
-// import GlobalState from "../GlobalState";
 
 interface LightProps {
   radius: number;
@@ -13,8 +12,12 @@ export interface LightRef {
 }
 
 const Light = forwardRef<LightRef, LightProps>(function Light(props, ref) {
-  const directionalLight = useRef<THREE.DirectionalLight>(null);
-  // const { isMobile } = GlobalState();
+  const directionalLight = useRef<THREE.DirectionalLight>(null!);
+  const shadowCamera = useRef<THREE.OrthographicCamera>(null!);
+  // useHelper(directionalLight, THREE.DirectionalLightHelper, 1, "hotpink");
+  // useHelper(shadowCamera, THREE.CameraHelper);
+
+  const shadowExtent = props.radius * 1.2;
 
   useImperativeHandle(ref, () => ({
     getDirectionalLight() {
@@ -22,26 +25,25 @@ const Light = forwardRef<LightRef, LightProps>(function Light(props, ref) {
     }
   }));
 
-  useEffect(() => {
-    // console.log(directionalLight.current);
-  }, []);
-
   return (
     <>
       <ambientLight intensity={0.05} />
 
       <directionalLight
         ref={directionalLight}
-        intensity={2}
+        intensity={6}
         position={props.lightPos}
         castShadow
-        shadow-mapSize={[4096, 4096]}
-        shadow-camera-top={props.radius * 1.2}
-        shadow-camera-right={props.radius * 1.2}
-        shadow-camera-bottom={-props.radius * 1.2}
-        shadow-camera-left={-props.radius * 1.2}
+        shadow-mapSize={[1024, 1024]}
         shadow-bias={-0.001}
-      />
+      >
+        <orthographicCamera
+          ref={shadowCamera}
+          attach="shadow-camera"
+          frustumCulled={false}
+          args={[-shadowExtent, shadowExtent, shadowExtent, -shadowExtent, 0.1, 200]}
+        />
+      </directionalLight>
 
       <Environment preset="city" environmentIntensity={0.5} />
     </>
@@ -49,5 +51,3 @@ const Light = forwardRef<LightRef, LightProps>(function Light(props, ref) {
 });
 
 export default Light;
-
-

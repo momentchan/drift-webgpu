@@ -1,19 +1,61 @@
-import { useRef, useEffect, useMemo } from "react";
+import { useRef, useEffect, useState } from "react";
 import { useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three/webgpu";
 import { WebGPURenderer } from "three/webgpu";
-import { uniform, pass, mix } from "three/tsl";
+import { uniform, pass, mix, color, int, float } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { dof } from "three/addons/tsl/display/DepthOfFieldNode.js";
 import { smaa } from "three/addons/tsl/display/SMAANode.js";
+import { godrays } from "three/addons/tsl/display/GodraysNode.js";
+import { bilateralBlur } from "three/addons/tsl/display/BilateralBlurNode.js";
+import { depthAwareBlend } from "three/addons/tsl/display/depthAwareBlend.js";
 import { useEffectsControls } from "./useEffectsControls";
 
-export default function Effects() {
-  const { bloom: bloomCfg, dof: dofCfg, toneMapping: tmCfg, smaa: smaaEnabled } = useEffectsControls();
-  const { gl, scene, camera } = useThree();
-  const postProcessingRef = useRef<THREE.PostProcessing | null>(null);
+/**
+ * Scans the scene tree once per frame until a shadow-casting
+ * DirectionalLight or PointLight is found, then stops scanning.
+ */
+function useShadowLight(scene: THREE.Scene) {
+  const [light, setLight] = useState<THREE.DirectionalLight | THREE.PointLight | null>(null);
+  const found = useRef(false);
 
-  // Use uniforms for toggles to avoid rebuilding the pipeline
+  useEffect(() => {
+    found.current = false;
+    setLight(null);
+  }, [scene]);
+
+  useFrame(() => {
+    if (found.current) return;
+    scene.traverse((obj: any) => {
+      if (
+        !found.current &&
+        (obj.isDirectionalLight || obj.isPointLight) &&
+        obj.castShadow
+      ) {
+        found.current = true;
+        setLight(obj);
+      }
+    });
+  });
+
+  return light;
+}
+
+export default function Effects() {
+  const {
+    bloom: bloomCfg,
+    dof: dofCfg,
+    toneMapping: tmCfg,
+    smaa: smaaEnabled,
+    godrays: grCfg
+  } = useEffectsControls();
+  const { gl, scene, camera } = useThree();
+
+  const sunLight = useShadowLight(scene);
+
+  const postProcessingRef = useRef<THREE.PostProcessing | null>(null);
+  const godraysPassRef = useRef<any>(null);
+
   const uParams = useRef({
     focusDist: uniform(0),
     focalLen: uniform(0),
@@ -21,13 +63,14 @@ export default function Effects() {
     bloomThresh: uniform(0),
     bloomStr: uniform(0),
     bloomRad: uniform(0),
-    // Toggle uniforms (1 = on, 0 = off)
     dofEnabled: uniform(1),
     bloomEnabled: uniform(1),
+    grBlendColor: uniform(color(0xffffff)),
+    grEdgeRadius: uniform(int(2)),
+    grEdgeStrength: uniform(float(2)),
   });
 
   useEffect(() => {
-    // Update uniforms based on Leva controls
     uParams.current.bloomThresh.value = bloomCfg.threshold;
     uParams.current.bloomStr.value = bloomCfg.strength;
     uParams.current.bloomRad.value = bloomCfg.radius;
@@ -40,13 +83,24 @@ export default function Effects() {
     uParams.current.bokeh.value = dofCfg.bokehScale;
     uParams.current.dofEnabled.value = dofCfg.enabled ? 1 : 0;
 
-    // if (gl instanceof WebGPURenderer) {
-    //   gl.toneMappingExposure = Math.pow(tmCfg.exposure, 4.0);
-    //   gl.toneMapping = tmCfg.enabled ? THREE.ReinhardToneMapping : THREE.NoToneMapping;
-    // }
-  }, [bloomCfg, dofCfg, tmCfg, gl]);
+    if (godraysPassRef.current) {
+      godraysPassRef.current.raymarchSteps.value = grCfg.raymarchSteps;
+      godraysPassRef.current.density.value = grCfg.density;
+      godraysPassRef.current.maxDensity.value = grCfg.maxDensity;
+      godraysPassRef.current.distanceAttenuation.value = grCfg.distanceAttenuation;
+    }
 
-  // Build the node graph ONLY ONCE
+    uParams.current.grBlendColor.value.set(grCfg.blendColor);
+    uParams.current.grEdgeRadius.value = Math.round(grCfg.edgeRadius);
+    uParams.current.grEdgeStrength.value = grCfg.edgeStrength;
+
+    if (gl instanceof WebGPURenderer) {
+      gl.toneMappingExposure = Math.pow(tmCfg.exposure, 4.0);
+      gl.toneMapping = tmCfg.enabled ? THREE.ReinhardToneMapping : THREE.NoToneMapping;
+    }
+  }, [bloomCfg, dofCfg, tmCfg, grCfg, gl]);
+
+  // Build the shader node graph; rebuilds when sunLight / toggle changes
   useEffect(() => {
     if (!gl || !(gl instanceof WebGPURenderer)) {
       console.error("WebGPURenderer is required for TSL Effects.");
@@ -57,44 +111,64 @@ export default function Effects() {
     postProcessingRef.current = pp;
 
     const scenePass = pass(scene, camera);
-    const sceneDepth = scenePass.getViewZNode();
+    const scenePassColor = scenePass.getTextureNode("output");
+    const scenePassDepthTex = scenePass.getTextureNode("depth");
+    const scenePassViewZ = scenePass.getViewZNode();
 
-    // 1. Base Node
-    let finalNode: any = scenePass;
+    let finalNode: any = scenePassColor;
 
-    // 2. Depth of Field (Mix with original based on toggle)
+    // 1. Godrays (requires a shadow-casting light)
+    if (grCfg.enabled && sunLight) {
+      const godraysNode = godrays(scenePassDepthTex, camera, sunLight);
+      godraysPassRef.current = godraysNode;
+
+      const blurPass = bilateralBlur(godraysNode.getTextureNode());
+
+      finalNode = depthAwareBlend(
+        scenePassColor,
+        blurPass.getTextureNode(),
+        scenePassDepthTex,
+        camera,
+        {
+          blendColor: uParams.current.grBlendColor,
+          edgeRadius: uParams.current.grEdgeRadius,
+          edgeStrength: uParams.current.grEdgeStrength,
+        }
+      );
+    } else {
+      godraysPassRef.current = null;
+    }
+
+    // 2. Depth of Field
     const dofNode = dof(
       finalNode,
-      sceneDepth,
+      scenePassViewZ,
       uParams.current.focusDist,
       uParams.current.focalLen,
       uParams.current.bokeh
     );
     finalNode = mix(finalNode, dofNode as any, uParams.current.dofEnabled);
 
-    // 3. Bloom (Mix with original based on toggle)
+    // 3. Bloom
     const bloomNode = bloom(finalNode);
     bloomNode.threshold = uParams.current.bloomThresh;
     bloomNode.strength = uParams.current.bloomStr;
     bloomNode.radius = uParams.current.bloomRad;
-    // Add bloom to the final node, but multiply by enabled flag
     finalNode = finalNode.add(bloomNode.mul(uParams.current.bloomEnabled));
 
-    // 4. SMAA (SMAA doesn't have a simple uniform toggle in TSL yet, 
-    // but building it once is still better. If toggle is strictly needed, 
-    // consider re-assigning pp.outputNode and calling pp.needsUpdate)
+    // 4. SMAA
     if (smaaEnabled) {
-       finalNode = smaa(finalNode);
+      finalNode = smaa(finalNode);
     }
 
     pp.outputNode = finalNode;
+    pp.needsUpdate = true;
 
     return () => {
       postProcessingRef.current = null;
     };
-  }, [gl, scene, camera]); // Removed control dependencies!
+  }, [gl, scene, camera, smaaEnabled, grCfg.enabled, sunLight]);
 
-  // Render loop priority 1 overrides R3F default render
   useFrame(() => {
     if (postProcessingRef.current) {
       postProcessingRef.current.render();

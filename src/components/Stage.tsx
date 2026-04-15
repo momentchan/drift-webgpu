@@ -1,6 +1,6 @@
 import { useAnimations, useFBX, useTexture } from "@react-three/drei";
 import * as THREE from 'three';
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { TGALoader } from 'three-stdlib';
 
@@ -28,11 +28,8 @@ interface ModelProps {
 
 function Model({ path, pos }: ModelProps) {
   const fbx = useFBX(path);
-  const { ref, actions, names } = useAnimations(fbx.animations) as {
-    ref: React.RefObject<THREE.Group>;
-    actions: { [key: string]: THREE.AnimationAction | null };
-    names: string[];
-  };
+  const groupRef = useRef<THREE.Group>(null);
+  const { actions, names } = useAnimations(fbx.animations, groupRef);
 
   const [index, setIndex] = useState(1);
   const [blendRate, setBlendRate] = useState(0);
@@ -116,13 +113,13 @@ function Model({ path, pos }: ModelProps) {
   }, []);
 
   useFrame((_state, delta) => {
-    if (ref.current) {
-      ref.current.rotation.x += delta * blendRate * 0.5;
+    if (groupRef.current) {
+      groupRef.current.rotation.x += delta * blendRate * 0.5;
     }
   });
 
   return (
-    <group ref={ref} position={pos} onClick={() => { if (blendRate === 0 || blendRate === 1) setIndex((index + 1) % names.length) }}>
+    <group ref={groupRef} position={pos} onClick={() => { if (blendRate === 0 || blendRate === 1) setIndex((index + 1) % names.length) }}>
       <primitive scale={0.02} object={fbx} />
     </group>
   );
