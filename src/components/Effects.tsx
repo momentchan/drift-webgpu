@@ -5,7 +5,6 @@ import { WebGPURenderer } from "three/webgpu";
 import { uniform, pass, mix, color, int, float } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { dof } from "three/addons/tsl/display/DepthOfFieldNode.js";
-import { smaa } from "three/addons/tsl/display/SMAANode.js";
 import { godrays } from "three/addons/tsl/display/GodraysNode.js";
 import { bilateralBlur } from "three/addons/tsl/display/BilateralBlurNode.js";
 import { depthAwareBlend } from "three/addons/tsl/display/depthAwareBlend.js";
@@ -46,7 +45,6 @@ export default function Effects() {
     bloom: bloomCfg,
     dof: dofCfg,
     toneMapping: tmCfg,
-    smaa: smaaEnabled,
     godrays: grCfg
   } = useEffectsControls();
   const { gl, scene, camera } = useThree();
@@ -156,18 +154,13 @@ export default function Effects() {
     bloomNode.radius = uParams.current.bloomRad;
     finalNode = finalNode.add(bloomNode.mul(uParams.current.bloomEnabled));
 
-    // 4. SMAA
-    if (smaaEnabled) {
-      finalNode = smaa(finalNode);
-    }
-
     pp.outputNode = finalNode;
     pp.needsUpdate = true;
 
     return () => {
       postProcessingRef.current = null;
     };
-  }, [gl, scene, camera, smaaEnabled, grCfg.enabled, sunLight]);
+  }, [gl, scene, camera, grCfg.enabled, sunLight]);
 
   useFrame(() => {
     if (postProcessingRef.current) {

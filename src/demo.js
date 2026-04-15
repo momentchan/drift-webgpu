@@ -1,7 +1,13 @@
 import { HandLandmarkManager } from '@core/interaction/index.ts';
 
+
+import { initHandTracking } from "@core/interaction/tracker";
+
+
+
 const statusEl = document.getElementById('status');
 const handCountEl = document.getElementById('hand-count');
+const fpsEl = document.getElementById('fps');
 const canvas = document.createElement('canvas');
 document.body.appendChild(canvas);
 const ctx = canvas.getContext('2d');
@@ -19,6 +25,8 @@ const FINGER_JOINTS = [
         statusEl.textContent = "Loading model...";
         const options = { modelType: 'full', mirror: true };
         const manager = new HandLandmarkManager(options);
+        let lastFpsUpdateTime = performance.now();
+        let frameCount = 0;
 
         statusEl.textContent = "Starting camera...";
         await manager.init();
@@ -43,6 +51,16 @@ const FINGER_JOINTS = [
         resize();
         
         manager.addEventListener(HandLandmarkManager.EVENTS.HAND_DETECTED, (e) => {
+            frameCount += 1;
+            const now = performance.now();
+            const elapsed = now - lastFpsUpdateTime;
+            if (elapsed >= 1000) {
+                const fps = (frameCount * 1000) / elapsed;
+                if (fpsEl) fpsEl.textContent = fps.toFixed(1);
+                frameCount = 0;
+                lastFpsUpdateTime = now;
+            }
+
             const results = e.detail;
             const landmarks = results.landmarks || [];
             const worldLandmarks = results.worldLandmarks || [];

@@ -2,10 +2,6 @@ import { useMemo } from 'react';
 import { useControls } from 'leva';
 
 export function useEffectsControls() {
-  const smaaParams = useControls('Effects.SMAA', {
-    enabled: { value: false, label: 'Enable SMAA' },
-  }, { collapsed: true });
-
   const bloomParams = useControls('Effects.Bloom', {
     enabled: { value: true, label: 'Enable Bloom' },
     threshold: { value: 0.8, min: 0, max: 1, step: 0.01 },
@@ -27,7 +23,7 @@ export function useEffectsControls() {
   }, { collapsed: true });
 
   const godraysParams = useControls('Effects.Godrays', {
-    enabled: { value: true, label: 'Enable Godrays' },
+    enabled: { value: false, label: 'Enable Godrays' },
     raymarchSteps: { value: 60, min: 24, max: 120, step: 1 },
     density: { value: 10, min: 0, max: 10, step: 0.01 },
     maxDensity: { value: 10, min: 0, max: 10, step: 0.01 },
@@ -49,7 +45,6 @@ export function useEffectsControls() {
   }, [dofParamsTPS]);
 
   return {
-    smaa: smaaParams.enabled,
     bloom: {
       enabled: bloomParams.enabled,
       threshold: bloomParams.threshold,
