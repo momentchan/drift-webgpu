@@ -3,7 +3,6 @@ import { CanvasCapture } from "@core";
 import { LevaWrapper } from "@core";
 import { Canvas } from "@react-three/fiber";
 import { WebGPURenderer } from "three/webgpu";
-// import { useState } from "react";
 import Light from "../components/Light";
 import Boids from "../components/Boids";
 import HandMarker from "../components/HandMarker";
@@ -14,6 +13,8 @@ import { Inspector } from "three/addons/inspector/Inspector.js";
 import CameraRotator from "../components/CameraRotator";
 import * as THREE from "three/webgpu";
 import HandDebugCanvas from "../components/HandDebugCanvas";
+import BGM from "../components/Bgm";
+import GlobalState from "../components/GlobalState";
 
 interface ComponentProps {
   radius: number;
@@ -26,8 +27,43 @@ function HandTrackingDriver() {
   return null;
 }
 
-export default function App() {
+function EntryOverlay() {
+  const { started, setStarted } = GlobalState();
 
+  if (started) return null;
+
+  const handleEnter = async () => {
+    const ctx = THREE.AudioContext.getContext() as AudioContext;
+    if (ctx.state !== 'running') {
+      await ctx.resume();
+    }
+    setStarted(true);
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(0, 0, 0, 0.85)",
+        cursor: "pointer",
+      }}
+      onClick={() => { void handleEnter(); }}
+    >
+      <div style={{ textAlign: "center", color: "#fff" }}>
+        <p style={{ fontSize: 14, opacity: 0.6, margin: "0 0 16px" }}>
+          Click anywhere to start
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
   const props: ComponentProps = {
     radius: 7.5,
     lightPos: [120, 120, 0],
@@ -37,6 +73,7 @@ export default function App() {
   return (
     <>
       <LevaWrapper />
+      <EntryOverlay />
 
       <Canvas
         shadows
@@ -61,18 +98,16 @@ export default function App() {
         performance={{ min: 0.5, max: 1 }}
       >
         <HandTrackingDriver />
-        {/* <fogExp2 attach="fog" args={[fog.color, fog.density]} /> */}
         <color attach="background" args={['#000000']} />
         <AdaptiveDpr pixelated />
         <CameraRotator />
-        {/* <CameraControls makeDefault /> */}
         <Effects />
         <CanvasCapture />
         <Character />
         <Light radius={props.radius} lightPos={props.lightPos} />
         <Boids radius={props.radius} count={8192} />
         <HandMarker />
-
+        <BGM />
 
         <mesh>
           <sphereGeometry args={[15, 32, 32]} />
