@@ -80,6 +80,11 @@ export default function AI() {
   const { noted, setNoted } = GlobalState();
   const writerRef = useRef<TypingDisplayHandle | null>(null);
 
+  // Keep the latest ObjectURL to revoke and avoid memory leaks
+  const objectUrlRef = useRef<string | null>(null);
+  
+  // Guard ref to prevent React Strict Mode from double-fetching
+  const bootInitiated = useRef<boolean>(false);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -91,11 +96,6 @@ export default function AI() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [setNoted]);
-
-
-
-  // Keep the latest ObjectURL to revoke and avoid memory leaks
-  const objectUrlRef = useRef<string | null>(null);
 
   // Compute a human-readable date used as the "per-day" cache key.
   function getTodayHumanDate() {
@@ -112,6 +112,9 @@ export default function AI() {
 
   // Load diary (and audio/transcription) on mount
   useEffect(() => {
+    // Prevent double execution in React 18 Strict Mode
+    if (bootInitiated.current) return;
+    bootInitiated.current = true;
 
     async function boot() {
       try {
@@ -135,7 +138,7 @@ export default function AI() {
             objectUrlRef.current = url;
             setAudioUrl(url);
           } else {
-            // No cached audio for today -> generate once (costs money only first time of the day)
+            // No cached audio for today -> generate once
             await fetchAudioAndTranscription(storedEntry);
           }
 
@@ -175,10 +178,6 @@ export default function AI() {
   // Network calls
   // ============================
 
-  /**
-   * Fetch a new diary entry (text only). This is cheaper than TTS.
-   * After text is ready, we also trigger the audio+transcription fetch.
-   */
   async function fetchNewDiary(currentDate: string) {
     setLoading(true);
     setError(false);
@@ -206,7 +205,7 @@ export default function AI() {
       setFirstWords(parseFirstWords(entry));
       setLoading(false);
 
-      // Fetch audio and transcription once per day, then cache base64 (to avoid repeated cost)
+      // Fetch audio and transcription once per day
       await fetchAudioAndTranscription(entry);
     } catch (e) {
       console.error(e);
@@ -215,11 +214,6 @@ export default function AI() {
     }
   }
 
-  /**
-   * Fetch audio (base64 only, no data: prefix) + transcription.
-   * We then convert base64 -> Blob -> ObjectURL for playback.
-   * We persist only base64 + mime + transcription to localStorage to avoid repeated TTS cost.
-   */
   async function fetchAudioAndTranscription(text: string) {
     try {
       const resp = await fetch(`${server}/api/speech-and-transcribe`, {
@@ -259,7 +253,6 @@ export default function AI() {
       writerRef.current?.reset?.();
     } catch (e) {
       console.error("Failed to fetch audio and transcription:", e);
-      // We keep the text visible; user can retry or trigger via a button if desired
     }
   }
 
