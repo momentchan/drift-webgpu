@@ -76,7 +76,7 @@ export default function AI() {
   const [audioUrl, setAudioUrl] = useState<string | undefined>(); // ObjectURL for <audio>
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<boolean>(false);
-  const [firstWords, setFirstWords] = useState<string[]>([]);
+
   const { noted, setNoted } = GlobalState();
   const writerRef = useRef<TypingDisplayHandle | null>(null);
 
@@ -97,18 +97,12 @@ export default function AI() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [setNoted]);
 
+
   // Compute a human-readable date used as the "per-day" cache key.
   function getTodayHumanDate() {
     return new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   }
 
-  // Derive a "first word per line" array for your UI
-  function parseFirstWords(text: string): string[] {
-    return text
-      .split("\n")
-      .filter(line => line.trim() !== "")
-      .map(line => line.trim().split(" ")[0]);
-  }
 
   // Load diary (and audio/transcription) on mount
   useEffect(() => {
@@ -128,7 +122,6 @@ export default function AI() {
         if (storedDate === today && storedEntry) {
           // Use cached text immediately
           setDiaryEntry(storedEntry);
-          setFirstWords(parseFirstWords(storedEntry));
 
           // Use cached audio (pure base64) if available -> convert to ObjectURL
           if (storedB64) {
@@ -202,7 +195,6 @@ export default function AI() {
       localStorage.setItem(LS_ENTRY, entry);
 
       setDiaryEntry(entry);
-      setFirstWords(parseFirstWords(entry));
       setLoading(false);
 
       // Fetch audio and transcription once per day
@@ -275,7 +267,7 @@ export default function AI() {
             ref={writerRef}
             transcription={transcription}
             audioUrl={audioUrl}
-            firstWords={firstWords}
+            dateText={getTodayHumanDate()}
           />
         )}
       </div>

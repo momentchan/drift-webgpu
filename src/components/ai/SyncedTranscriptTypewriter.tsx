@@ -15,7 +15,7 @@ interface Transcription {
 interface SyncedTranscriptTypewriterProps {
   transcription?: Transcription;
   audioUrl?: string;        // blob: ObjectURL (NOT data:)
-  firstWords: string[];     // line leaders to insert line breaks
+  dateText?: string;        // e.g. "April 16, 2026" — line break inserted after this
 }
 
 export interface SyncedTranscriptTypewriterRef {
@@ -36,21 +36,9 @@ function waitCanPlay(el: HTMLAudioElement) {
 }
 
 const SyncedTranscriptTypewriter = forwardRef<SyncedTranscriptTypewriterRef, SyncedTranscriptTypewriterProps>(
-  ({ transcription, audioUrl, firstWords }, ref) => {
-  const { noted, setNoted } = GlobalState();
+  ({ transcription, audioUrl, dateText }, ref) => {
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "n" || event.key === "N") {
-        setNoted(!noted);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [noted, setNoted]);
+    const { noted } = GlobalState();
 
     const audio = useRef<HTMLAudioElement | null>(null);
     const rafId = useRef<number | null>(null);
@@ -80,26 +68,14 @@ const SyncedTranscriptTypewriter = forwardRef<SyncedTranscriptTypewriterRef, Syn
 
       if (!transcription || !transcription.segments?.length) return;
 
-      const leaders = firstWords
-        .map(w => (w ?? "").trim())
-        .filter(w => w.length > 0);
-
       const chars: CharData[] = [];
-      transcription.segments.forEach((seg, segIdx) => {
+      transcription.segments.forEach((seg) => {
         const start = Math.max(0, seg.start ?? 0);
         const end = Math.max(start, seg.end ?? start);
         const duration = end - start;
-        let text = (seg.text ?? "").replace(/\s+/g, " ").trim();
+        const text = (seg.text ?? "").replace(/\s+/g, " ").trim();
 
         if (!text) return;
-
-        const firstWord = text.split(" ")[0] ?? "";
-        if (leaders.length > 0 && firstWord === leaders[0]) {
-          if (segIdx !== 0) {
-            chars.push({ char: "\n\n", t: start });
-          }
-          leaders.shift();
-        }
 
         const arr = Array.from(text);
         const len = arr.length;
@@ -117,8 +93,30 @@ const SyncedTranscriptTypewriter = forwardRef<SyncedTranscriptTypewriterRef, Syn
       });
 
       chars.sort((a, b) => a.t - b.t);
+
+      // Insert a line break after the date (tolerates ordinal suffixes like "17th")
+      if (dateText) {
+        const pattern = dateText
+          .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+          .replace(/(\d+)/, "$1(?:st|nd|rd|th)?");
+        const dateRe = new RegExp(pattern + "\\.?");
+        const fullText = chars.map(c => c.char).join("");
+        const match = fullText.match(dateRe);
+        if (match && match.index != null) {
+          const target = match.index + match[0].length;
+          let count = 0;
+          for (let i = 0; i < chars.length; i++) {
+            count += chars[i].char.length;
+            if (count >= target) {
+              chars.splice(i + 1, 0, { char: "\n\n", t: chars[i].t });
+              break;
+            }
+          }
+        }
+      }
+
       timedCharsRef.current = chars;
-    }, [transcription, firstWords]);
+    }, [transcription, dateText]);
 
     useEffect(() => {
       if (!audioUrl) return;
@@ -141,6 +139,7 @@ const SyncedTranscriptTypewriter = forwardRef<SyncedTranscriptTypewriterRef, Syn
     }, [audioUrl]);
 
     useEffect(() => {
+
       const el = audio.current;
       const haveChars = timedCharsRef.current.length > 0;
       if (!noted || !el || !audioUrl || !haveChars) {
@@ -216,7 +215,7 @@ const SyncedTranscriptTypewriter = forwardRef<SyncedTranscriptTypewriterRef, Syn
         try {
           audio.current.pause();
           audio.current.currentTime = 0;
-        } catch {}
+        } catch { }
       }
     }
 
