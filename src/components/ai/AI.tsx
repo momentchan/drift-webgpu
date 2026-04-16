@@ -77,7 +77,7 @@ export default function AI() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<boolean>(false);
 
-  const { noted, setNoted } = GlobalState();
+  const { noted, setNoted, started } = GlobalState();
   const writerRef = useRef<TypingDisplayHandle | null>(null);
 
   // Keep the latest ObjectURL to revoke and avoid memory leaks
@@ -86,16 +86,42 @@ export default function AI() {
   // Guard ref to prevent React Strict Mode from double-fetching
   const bootInitiated = useRef<boolean>(false);
 
+  // Auto-loop timers
+  const loopTimerRef = useRef<number | null>(null);
+  const T1 = 30000; // ms to wait after typing finishes before hiding
+  const T2 = 90000; // ms to wait while hidden before replaying
+
+  const dataReady = started && !loading && !error && !!audioUrl;
+
+  // Auto-start noted when data becomes ready and user has started
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "n" || event.key === "N") {
-        const currentNoted = GlobalState.getState().noted;
-        setNoted(!currentNoted);
+    if (dataReady && !noted) {
+      setNoted(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataReady]);
+
+  function handleTypingFinished() {
+    if (loopTimerRef.current) return;
+    loopTimerRef.current = window.setTimeout(() => {
+      setNoted(false);
+      loopTimerRef.current = window.setTimeout(() => {
+        loopTimerRef.current = null;
+        writerRef.current?.reset?.();
+        setNoted(true);
+      }, T2);
+    }, T1);
+  }
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (loopTimerRef.current) {
+        clearTimeout(loopTimerRef.current);
+        loopTimerRef.current = null;
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setNoted]);
+  }, []);
 
 
   // Compute a human-readable date used as the "per-day" cache key.
@@ -156,14 +182,6 @@ export default function AI() {
     }
 
     boot();
-
-    // Cleanup any previously created ObjectURL when component unmounts
-    return () => {
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-        objectUrlRef.current = null;
-      }
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -268,6 +286,7 @@ export default function AI() {
             transcription={transcription}
             audioUrl={audioUrl}
             dateText={getTodayHumanDate()}
+            onFinished={handleTypingFinished}
           />
         )}
       </div>

@@ -52,18 +52,5 @@ export default function BGM() {
     };
   }, [started, listener]);
 
-  useEffect(() => {
-    if (bgmRefs.current.length === 0) return;
-    bgmRefs.current.forEach((bgm) => {
-      if (bgm.data.signal) {
-        if (noted) {
-          bgm.audio.stop();
-        }
-      } else if (!bgm.audio.isPlaying) {
-        bgm.audio.play(bgm.data.delay);
-      }
-    });
-  }, [noted]);
-
   return null;
 }

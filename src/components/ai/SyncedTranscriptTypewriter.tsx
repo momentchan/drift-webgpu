@@ -16,6 +16,7 @@ interface SyncedTranscriptTypewriterProps {
   transcription?: Transcription;
   audioUrl?: string;        // blob: ObjectURL (NOT data:)
   dateText?: string;        // e.g. "April 16, 2026" — line break inserted after this
+  onFinished?: () => void;  // called once when audio ends and all chars are revealed
 }
 
 export interface SyncedTranscriptTypewriterRef {
@@ -36,7 +37,7 @@ function waitCanPlay(el: HTMLAudioElement) {
 }
 
 const SyncedTranscriptTypewriter = forwardRef<SyncedTranscriptTypewriterRef, SyncedTranscriptTypewriterProps>(
-  ({ transcription, audioUrl, dateText }, ref) => {
+  ({ transcription, audioUrl, dateText, onFinished }, ref) => {
 
     const { noted } = GlobalState();
 
@@ -46,6 +47,8 @@ const SyncedTranscriptTypewriter = forwardRef<SyncedTranscriptTypewriterRef, Syn
     const timedCharsRef = useRef<CharData[]>([]);
     const idxRef = useRef<number>(0);
     const textRef = useRef<string>("");
+    const onFinishedRef = useRef(onFinished);
+    onFinishedRef.current = onFinished;
 
     const [displayedText, setDisplayedText] = useState("");
     const [needUserGesture, setNeedUserGesture] = useState(false);
@@ -171,6 +174,12 @@ const SyncedTranscriptTypewriter = forwardRef<SyncedTranscriptTypewriterRef, Syn
         if (advanced && ts - lastCommit > 15) {
           setDisplayedText(textRef.current);
           lastCommit = ts;
+        }
+
+        if (idxRef.current >= arr.length && el.ended) {
+          setDisplayedText(textRef.current);
+          onFinishedRef.current?.();
+          return;
         }
 
         rafId.current = requestAnimationFrame(loop);
