@@ -44,16 +44,16 @@ function base64ToObjectUrl(b64: string, mime = "audio/mpeg") {
  * - Prod: (replace with your Render URL if different)
  */
 function getServerBase() {
-  // if (typeof window !== "undefined") {
-  //   const origin = window.location.origin;
-  //   // Add your production hostnames here if you want auto-switch
-  //   if (origin.includes("mingjyunhung.com")) {
-  //     // Example: your Render backend host
-  //     return "https://openai-api-backend.onrender.com";
-  //   }
-  // }
-  // return "https://openai-api-backend.onrender.com";
-  return "http://localhost:3000";
+  if (typeof window !== "undefined") {
+    const origin = window.location.origin;
+    // Add your production hostnames here if you want auto-switch
+    if (origin.includes("mingjyunhung.com")) {
+      // Example: your Render backend host
+      return "https://openai-api-backend.onrender.com";
+    }
+  }
+  return "https://openai-api-backend.onrender.com";
+  // return "http://localhost:3000";
 }
 
 const server = getServerBase();

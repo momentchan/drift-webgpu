@@ -94,7 +94,9 @@ export default function App() {
             antialias: true,
             alpha: false,
           });
-          renderer.inspector = new Inspector();
+          if (window.location.pathname.includes("debug")) {
+            renderer.inspector = new Inspector();
+          }
 
           return renderer.init().then(() => renderer);
         }}
