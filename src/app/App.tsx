@@ -1,4 +1,4 @@
-import { AdaptiveDpr, CameraControls } from "@react-three/drei";
+import { AdaptiveDpr } from "@react-three/drei";
 import { CanvasCapture } from "@core";
 import { LevaWrapper } from "@core";
 import { Canvas } from "@react-three/fiber";
@@ -6,12 +6,11 @@ import { WebGPURenderer } from "three/webgpu";
 // import { useState } from "react";
 import Light from "../components/Light";
 import Boids from "../components/Boids";
-import HandDebug from "../components/HandDebug";
+import HandMarker from "../components/HandMarker";
 import { useHandTracking } from "../components/useHandTracking";
 import Effects from "../components/Effects";
 import { Character } from "../components/character/Character";
 import { Inspector } from "three/addons/inspector/Inspector.js";
-import { useControls } from "leva";
 import CameraRotator from "../components/CameraRotator";
 import * as THREE from "three/webgpu";
 import HandDebugCanvas from "../components/HandDebugCanvas";
@@ -72,7 +71,7 @@ export default function App() {
         <Character />
         <Light radius={props.radius} lightPos={props.lightPos} />
         <Boids radius={props.radius} count={8192} />
-        <HandDebug />
+        <HandMarker />
 
 
         <mesh>

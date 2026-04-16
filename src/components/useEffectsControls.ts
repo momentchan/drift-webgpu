@@ -19,7 +19,7 @@ export function useEffectsControls() {
     autofocus: { value: true, label: 'Auto Focus Character' },
     focusDistance: { value: 1.3, min: 0, max: 100, step: 0.1, render: (get) => !get('Effects.DoF.TPS.autofocus') },
     focalLength: { value: 25.0, min: 0.01, max: 100, step: 0.1 },
-    bokehScale: { value: 5, min: 0.0, max: 10.0, step: 0.1 },
+    bokehScale: { value: 2.5, min: 0.0, max: 10.0, step: 0.1 },
   }, { collapsed: true });
 
   const godraysParams = useControls('Effects.Godrays', {
