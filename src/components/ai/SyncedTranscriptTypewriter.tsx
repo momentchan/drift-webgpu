@@ -1,0 +1,245 @@
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import GlobalState from "../GlobalState";
+
+interface TranscriptionSegment {
+  id: number;
+  start: number; // seconds
+  end: number;   // seconds
+  text: string;
+}
+
+interface Transcription {
+  segments: TranscriptionSegment[];
+}
+
+interface SyncedTranscriptTypewriterProps {
+  transcription?: Transcription;
+  audioUrl?: string;        // blob: ObjectURL (NOT data:)
+  firstWords: string[];     // line leaders to insert line breaks
+}
+
+export interface SyncedTranscriptTypewriterRef {
+  reset: () => void;
+}
+
+interface CharData {
+  char: string;
+  t: number; // reveal time in seconds
+}
+
+function waitCanPlay(el: HTMLAudioElement) {
+  return new Promise<void>((resolve) => {
+    if (el.readyState >= 2) return resolve(); // HAVE_CURRENT_DATA
+    const on = () => { el.removeEventListener("canplay", on); resolve(); };
+    el.addEventListener("canplay", on, { once: true });
+  });
+}
+
+const SyncedTranscriptTypewriter = forwardRef<SyncedTranscriptTypewriterRef, SyncedTranscriptTypewriterProps>(
+  ({ transcription, audioUrl, firstWords }, ref) => {
+  const { noted, setNoted } = GlobalState();
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "n" || event.key === "N") {
+        setNoted(!noted);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [noted, setNoted]);
+
+    const audio = useRef<HTMLAudioElement | null>(null);
+    const rafId = useRef<number | null>(null);
+
+    const timedCharsRef = useRef<CharData[]>([]);
+    const idxRef = useRef<number>(0);
+    const textRef = useRef<string>("");
+
+    const [displayedText, setDisplayedText] = useState("");
+    const [needUserGesture, setNeedUserGesture] = useState(false);
+
+    useImperativeHandle(ref, () => ({
+      reset() {
+        stopLoopAndAudio();
+        idxRef.current = 0;
+        textRef.current = "";
+        setDisplayedText("");
+        setNeedUserGesture(false);
+      }
+    }));
+
+    useEffect(() => {
+      timedCharsRef.current = [];
+      idxRef.current = 0;
+      textRef.current = "";
+      setDisplayedText("");
+
+      if (!transcription || !transcription.segments?.length) return;
+
+      const leaders = firstWords
+        .map(w => (w ?? "").trim())
+        .filter(w => w.length > 0);
+
+      const chars: CharData[] = [];
+      transcription.segments.forEach((seg, segIdx) => {
+        const start = Math.max(0, seg.start ?? 0);
+        const end = Math.max(start, seg.end ?? start);
+        const duration = end - start;
+        let text = (seg.text ?? "").replace(/\s+/g, " ").trim();
+
+        if (!text) return;
+
+        const firstWord = text.split(" ")[0] ?? "";
+        if (leaders.length > 0 && firstWord === leaders[0]) {
+          if (segIdx !== 0) {
+            chars.push({ char: "\n\n", t: start });
+          }
+          leaders.shift();
+        }
+
+        const arr = Array.from(text);
+        const len = arr.length;
+        if (len === 1) {
+          chars.push({ char: arr[0], t: start });
+          return;
+        }
+        if (len > 1) {
+          for (let i = 0; i < len; i++) {
+            const r = i / (len - 1);
+            const t = start + duration * r;
+            chars.push({ char: arr[i], t });
+          }
+        }
+      });
+
+      chars.sort((a, b) => a.t - b.t);
+      timedCharsRef.current = chars;
+    }, [transcription, firstWords]);
+
+    useEffect(() => {
+      if (!audioUrl) return;
+
+      if (!audio.current) {
+        audio.current = new Audio();
+        audio.current.preload = "auto";
+        audio.current.crossOrigin = "anonymous";
+        audio.current.loop = false;
+        audio.current.volume = 0.5;
+      }
+
+      if (!audioUrl.startsWith("blob:")) {
+        console.error("[SyncedTranscriptTypewriter] audioUrl must be a blob: URL. Got:", audioUrl);
+        return;
+      }
+
+      audio.current.src = audioUrl;
+      audio.current.load();
+    }, [audioUrl]);
+
+    useEffect(() => {
+      const el = audio.current;
+      const haveChars = timedCharsRef.current.length > 0;
+      if (!noted || !el || !audioUrl || !haveChars) {
+        stopLoopAndAudio();
+        return;
+      }
+
+      let canceled = false;
+      const OFFSET = 0.20;
+      let lastCommit = 0;
+
+      const loop = (ts: number) => {
+        if (canceled) return;
+
+        const t = el.currentTime;
+        const arr = timedCharsRef.current;
+        let advanced = false;
+        while (idxRef.current < arr.length) {
+          const next = arr[idxRef.current];
+          if (t >= next.t - OFFSET || el.ended) {
+            textRef.current += next.char;
+            idxRef.current += 1;
+            advanced = true;
+          } else {
+            break;
+          }
+        }
+
+        if (advanced && ts - lastCommit > 15) {
+          setDisplayedText(textRef.current);
+          lastCommit = ts;
+        }
+
+        rafId.current = requestAnimationFrame(loop);
+      };
+
+      (async () => {
+        try {
+          await waitCanPlay(el);
+          await el.play().catch(() => {
+            setNeedUserGesture(true);
+          });
+          if (!canceled) rafId.current = requestAnimationFrame(loop);
+        } catch {
+          setNeedUserGesture(true);
+        }
+      })();
+
+      return () => {
+        canceled = true;
+        if (rafId.current) {
+          cancelAnimationFrame(rafId.current);
+          rafId.current = null;
+        }
+      };
+    }, [noted, audioUrl, transcription]);
+
+    useEffect(() => {
+      if (!noted) {
+        stopLoopAndAudio();
+        setDisplayedText("");
+        textRef.current = "";
+        idxRef.current = 0;
+      }
+    }, [noted]);
+
+    function stopLoopAndAudio() {
+      if (rafId.current) {
+        cancelAnimationFrame(rafId.current);
+        rafId.current = null;
+      }
+      if (audio.current) {
+        try {
+          audio.current.pause();
+          audio.current.currentTime = 0;
+        } catch {}
+      }
+    }
+
+    async function handleUserStart() {
+      if (!audio.current) return;
+      setNeedUserGesture(false);
+      try {
+        await waitCanPlay(audio.current);
+        await audio.current.play();
+      } catch {
+        setNeedUserGesture(true);
+      }
+    }
+
+    return (
+      <div style={{ position: "relative" }}>
+        <pre style={{ whiteSpace: "pre-wrap" }}>{displayedText}</pre>
+      </div>
+    );
+  }
+);
+
+SyncedTranscriptTypewriter.displayName = "SyncedTranscriptTypewriter";
+
+export default SyncedTranscriptTypewriter;
+

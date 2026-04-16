@@ -15,6 +15,7 @@ import * as THREE from "three/webgpu";
 import HandDebugCanvas from "../components/HandDebugCanvas";
 import BGM from "../components/Bgm";
 import GlobalState from "../components/GlobalState";
+import AI from "../components/ai/AI";
 
 interface ComponentProps {
   radius: number;
@@ -39,6 +40,8 @@ function EntryOverlay() {
     }
     setStarted(true);
   };
+  
+  if (started) return null;
 
   return (
     <div
@@ -72,8 +75,9 @@ export default function App() {
 
   return (
     <>
-      <LevaWrapper />
+      <LevaWrapper initialHidden={true} />
       <EntryOverlay />
+      <AI/>
 
       <Canvas
         shadows
