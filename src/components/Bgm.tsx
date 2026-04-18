@@ -22,7 +22,7 @@ export default function BGM() {
   const listener = useRef(new THREE.AudioListener()).current;
 
   const soundData: SoundData[] = [
-    { file: 'audio/space.m4a', volume: 0.15, delay: 0, signal: false },
+    { file: 'audio/fever-dreams-3am.m4a', volume: 0.15, delay: 0, signal: false },
     { file: 'audio/noise.mp3', volume: 0.15, delay: 0, signal: false },
     { file: 'audio/narrative.m4a', volume: 0.02, delay: 3, signal: true },
   ];
