@@ -10,6 +10,9 @@ import { bilateralBlur } from "three/addons/tsl/display/BilateralBlurNode.js";
 import { depthAwareBlend } from "three/addons/tsl/display/depthAwareBlend.js";
 import { useEffectsControls } from "./useEffectsControls";
 
+// Closer to the origin = stronger bokeh; at this distance, bokeh matches the Leva "bokehScale" slider.
+const BOKEH_DISTANCE_REF = 5;
+
 /**
  * Scans the scene tree once per frame until a shadow-casting
  * DirectionalLight or PointLight is found, then stops scanning.
@@ -80,7 +83,6 @@ export default function Effects() {
       uParams.current.focusDist.value = dofCfg.focusDistance;
     }
     uParams.current.focalLen.value = dofCfg.focalLength;
-    uParams.current.bokeh.value = dofCfg.bokehScale;
     uParams.current.dofEnabled.value = dofCfg.enabled ? 1 : 0;
 
     if (godraysPassRef.current) {
@@ -165,9 +167,16 @@ export default function Effects() {
   }, [gl, scene, camera, grCfg.enabled, sunLight]);
 
   useFrame(() => {
+    camera.getWorldPosition(cameraWorldPos);
+    const camDist = Math.max(1e-3, cameraWorldPos.distanceTo(focusTarget));
+
+    if (dofCfg.enabled) {
+      uParams.current.bokeh.value =
+        dofCfg.bokehScale * (BOKEH_DISTANCE_REF / camDist);
+    }
+
     if (dofCfg.enabled && dofCfg.autofocus) {
-      camera.getWorldPosition(cameraWorldPos);
-      uParams.current.focusDist.value = cameraWorldPos.distanceTo(focusTarget);
+      uParams.current.focusDist.value = camDist;
     }
 
     if (postProcessingRef.current) {

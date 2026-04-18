@@ -98,7 +98,11 @@ export function useHandTracking(
     };
 
     const setup = async () => {
-      const camera = new CameraManager();
+      const camera = new CameraManager({
+        width: 320,
+        height: 240,
+        fps: 20,
+      } as any);
       await camera.start();
       if (disposed) { camera.dispose(); return; }
 

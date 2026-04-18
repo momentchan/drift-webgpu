@@ -101,6 +101,18 @@ export default function AI() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataReady]);
 
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "n" || event.key === "N") {
+        const currentNoted = GlobalState.getState().noted;
+        setNoted(!currentNoted);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   function handleTypingFinished() {
     if (loopTimerRef.current) return;
     loopTimerRef.current = window.setTimeout(() => {

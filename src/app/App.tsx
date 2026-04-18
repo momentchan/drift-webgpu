@@ -16,6 +16,8 @@ import HandDebugCanvas from "../components/HandDebugCanvas";
 import BGM from "../components/Bgm";
 import GlobalState from "../components/GlobalState";
 import AI from "../components/ai/AI";
+import SceneBackdrop from "../components/SceneBackdrop";
+import { useFogControls } from "../components/useFogControls";
 
 interface ComponentProps {
   radius: number;
@@ -67,6 +69,8 @@ function EntryOverlay() {
 }
 
 export default function App() {
+  const fog = useFogControls();
+
   const props: ComponentProps = {
     radius: 7.5,
     lightPos: [120, 120, 0],
@@ -103,6 +107,10 @@ export default function App() {
         dpr={[1, 2]}
         performance={{ min: 0.5, max: 1 }}
       >
+        {fog.enabled ? (
+          <fogExp2 attach="fog" args={[fog.color, fog.density]} />
+        ) : null}
+
         <HandTrackingDriver />
         <color attach="background" args={['#000000']} />
         <AdaptiveDpr pixelated />
@@ -115,10 +123,7 @@ export default function App() {
         <HandMarker />
         <BGM />
 
-        <mesh>
-          <sphereGeometry args={[15, 32, 32]} />
-          <meshBasicMaterial color="#000000" side={THREE.BackSide} />
-        </mesh>
+        <SceneBackdrop />
       </Canvas>
 
       <HandDebugCanvas />

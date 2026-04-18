@@ -23,6 +23,11 @@ export default function Boids({ radius, count }: BoidsProps) {
 
 
 
+  const matProps = useControls('Boids.Material', {
+    roughness: { value: 0.5, min: 0, max: 1, step: 0.01 },
+    metalness: { value: 0.2, min: 0, max: 1, step: 0.01 },
+  }, { collapsed: true });
+
   const props = useControls({
     'Boids': folder({
       separationDistance: { value: 1, min: 0, max: 5 },
@@ -38,7 +43,7 @@ export default function Boids({ radius, count }: BoidsProps) {
       touchWeight: { value: 200, min: 0, max: 200 },
       touchRange: { value: 0.5, min: 0, max: 5 },
 
-      centerWeight: { value: 5, min: 0, max: 10 },
+      centerWeight: { value: 100, min: 0, max: 100 },
 
       noiseFrequency: { value: 0.05, min: 0, max: 0.2 },
       noiseSpeed: { value: 0.1, min: 0, max: 0.5 },
@@ -256,8 +261,8 @@ export default function Boids({ radius, count }: BoidsProps) {
     const compute = computeMovement().compute(count);
 
     const material = new THREE.MeshStandardNodeMaterial({
-      roughness: 0.5,
-      metalness: 0.2,
+      roughness: matProps.roughness,
+      metalness: matProps.metalness,
     });
 
     // --- Vertex Node: Scale & Rotation ---
@@ -300,7 +305,7 @@ export default function Boids({ radius, count }: BoidsProps) {
     const handColor = mix(uCloseColor, uOpenColor, handStateNorm);
     const baseColor = vec3(uBaseColor.r, uBaseColor.g, uBaseColor.b);
     material.colorNode = baseColor;
-    material.emissiveNode = handColor.mul(interactiveVal).mul(2);
+    material.emissiveNode = handColor.mul(interactiveVal).mul(10);
 
     const geometry = new THREE.BoxGeometry(0.002, 0.02, 0.02); 
     // const sourceMesh = pyramid.scene.children.find(
@@ -367,6 +372,10 @@ export default function Boids({ radius, count }: BoidsProps) {
     uniforms.uOpenColor.value.set(props.openColor);
     uniforms.uCloseColor.value.set(props.closeColor);
     uniforms.uBaseColor.value.set(props.baseColor);
+
+    const stdMat = mesh.material as THREE.MeshStandardNodeMaterial;
+    stdMat.roughness = matProps.roughness;
+    stdMat.metalness = matProps.metalness;
 
     const renderer = state.gl as unknown as WebGPURenderer;
     renderer.compute(computeNode);
