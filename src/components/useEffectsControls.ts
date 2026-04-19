@@ -22,6 +22,12 @@ export function useEffectsControls() {
     bokehScale: { value: 5, min: 0.0, max: 10.0, step: 0.1 },
   }, { collapsed: true });
 
+  const noiseParams = useControls('Effects.Noise', {
+    enabled: { value: true, label: 'Enable Film Grain' },
+    intensity: { value: 0.1, min: 0, max: 1, step: 0.001, label: 'Intensity' },
+    premultiply: { value: true, label: 'Premultiply' },
+  }, { collapsed: true });
+
   const godraysParams = useControls('Effects.Godrays', {
     enabled: { value: false, label: 'Enable Godrays' },
     raymarchSteps: { value: 60, min: 24, max: 120, step: 1 },
@@ -57,5 +63,10 @@ export function useEffectsControls() {
     },
     dof,
     godrays: godraysParams,
+    noise: {
+      enabled: noiseParams.enabled,
+      intensity: noiseParams.intensity,
+      premultiply: noiseParams.premultiply,
+    },
   };
 }

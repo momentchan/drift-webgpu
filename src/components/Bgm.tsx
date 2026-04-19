@@ -20,9 +20,11 @@ export default function BGM() {
   const bgmRefs = useRef<BgmRef[]>([]);
   const { started, noted } = GlobalState();
   const listener = useRef(new THREE.AudioListener()).current;
+  const notedRef = useRef(noted);
+  notedRef.current = noted;
 
   const soundData: SoundData[] = [
-    { file: 'audio/fever-dreams-3am.m4a', volume: 0.15, delay: 0, signal: false },
+    { file: 'audio/three-sparrows.mp3', volume: 0.1, delay: 0, signal: false },
     { file: 'audio/noise.mp3', volume: 0.15, delay: 0, signal: false },
     { file: 'audio/narrative.m4a', volume: 0.02, delay: 3, signal: true },
   ];
@@ -41,6 +43,8 @@ export default function BGM() {
         audio.setBuffer(buffer);
         audio.setLoop(true);
         audio.setVolume(data.volume);
+        // Signal tracks should stay silent while `noted` is on.
+        if (data.signal && notedRef.current) return;
         audio.play(data.delay);
       });
       bgmRefs.current.push({ audio, data });
@@ -51,6 +55,22 @@ export default function BGM() {
       bgmRefs.current = [];
     };
   }, [started, listener]);
+
+  // Mute/unmute signal-tagged tracks based on `noted`.
+  useEffect(() => {
+    if (!started) return;
+
+    bgmRefs.current.forEach(({ audio, data }) => {
+      if (!data.signal) return;
+      if (!audio.buffer) return;
+
+      if (noted) {
+        if (audio.isPlaying) audio.pause();
+      } else {
+        if (!audio.isPlaying) audio.play();
+      }
+    });
+  }, [noted, started]);
 
   return null;
 }

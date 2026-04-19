@@ -297,7 +297,7 @@ export default function AI() {
             ref={writerRef}
             transcription={transcription}
             audioUrl={audioUrl}
-            dateText={getTodayHumanDate()}
+            diaryEntry={diaryEntry}
             onFinished={handleTypingFinished}
           />
         )}

@@ -2,7 +2,7 @@ import { useRef, useEffect, useState, useMemo } from "react";
 import { useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three/webgpu";
 import { WebGPURenderer } from "three/webgpu";
-import { uniform, pass, mix, color, int, float } from "three/tsl";
+import { uniform, pass, mix, color, int, float, hash, time, screenCoordinate, vec3 } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { dof } from "three/addons/tsl/display/DepthOfFieldNode.js";
 import { godrays } from "three/addons/tsl/display/GodraysNode.js";
@@ -48,7 +48,8 @@ export default function Effects() {
     bloom: bloomCfg,
     dof: dofCfg,
     toneMapping: tmCfg,
-    godrays: grCfg
+    godrays: grCfg,
+    noise: noiseCfg,
   } = useEffectsControls();
   const { gl, scene, camera } = useThree();
 
@@ -71,6 +72,7 @@ export default function Effects() {
     grBlendColor: uniform(color(0xffffff)),
     grEdgeRadius: uniform(int(2)),
     grEdgeStrength: uniform(float(2)),
+    noiseIntensity: uniform(0.1),
   });
 
   useEffect(() => {
@@ -96,11 +98,13 @@ export default function Effects() {
     uParams.current.grEdgeRadius.value = Math.round(grCfg.edgeRadius);
     uParams.current.grEdgeStrength.value = grCfg.edgeStrength;
 
+    uParams.current.noiseIntensity.value = noiseCfg.intensity;
+
     if (gl instanceof WebGPURenderer) {
       gl.toneMappingExposure = Math.pow(tmCfg.exposure, 4.0);
       gl.toneMapping = tmCfg.enabled ? THREE.ReinhardToneMapping : THREE.NoToneMapping;
     }
-  }, [bloomCfg, dofCfg, tmCfg, grCfg, gl]);
+  }, [bloomCfg, dofCfg, tmCfg, grCfg, noiseCfg, gl]);
 
   // Build the shader node graph; rebuilds when sunLight / toggle changes
   useEffect(() => {
@@ -158,13 +162,29 @@ export default function Effects() {
     bloomNode.radius = uParams.current.bloomRad;
     finalNode = finalNode.add(bloomNode.mul(uParams.current.bloomEnabled));
 
+    // 4. Film grain noise (additive hash-based noise, optionally premultiplied)
+    // NOTE: TSL's `hash` is a PCG hash that calls `toUint()` on its seed internally.
+    // Passing normalized UVs (0..1) truncates to 0 for every pixel, killing all
+    // per-pixel variation, and a vec3 seed would yield per-channel colored noise.
+    // So we build a scalar integer seed from pixel coords + a frame-scaled time.
+    if (noiseCfg.enabled) {
+      const grainSeed = screenCoordinate.x.toUint().mul(73)
+        .add(screenCoordinate.y.toUint().mul(997))
+        .add(time.mul(60).toUint());
+      const grain = hash(grainSeed).mul(uParams.current.noiseIntensity);
+      const noiseContribution = noiseCfg.premultiply
+        ? vec3(grain).mul(finalNode)
+        : vec3(grain);
+      finalNode = finalNode.add(noiseContribution);
+    }
+
     pp.outputNode = finalNode;
     pp.needsUpdate = true;
 
     return () => {
       postProcessingRef.current = null;
     };
-  }, [gl, scene, camera, grCfg.enabled, sunLight]);
+  }, [gl, scene, camera, grCfg.enabled, noiseCfg.enabled, noiseCfg.premultiply, sunLight]);
 
   useFrame(() => {
     camera.getWorldPosition(cameraWorldPos);

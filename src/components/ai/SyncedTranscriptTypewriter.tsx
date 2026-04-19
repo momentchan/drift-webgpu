@@ -15,7 +15,7 @@ interface Transcription {
 interface SyncedTranscriptTypewriterProps {
   transcription?: Transcription;
   audioUrl?: string;        // blob: ObjectURL (NOT data:)
-  dateText?: string;        // e.g. "April 16, 2026" — line break inserted after this
+  diaryEntry?: string;      // original diary text with proper line breaks; used as the source of truth for displayed characters
   onFinished?: () => void;  // called once when audio ends and all chars are revealed
 }
 
@@ -37,7 +37,7 @@ function waitCanPlay(el: HTMLAudioElement) {
 }
 
 const SyncedTranscriptTypewriter = forwardRef<SyncedTranscriptTypewriterRef, SyncedTranscriptTypewriterProps>(
-  ({ transcription, audioUrl, dateText, onFinished }, ref) => {
+  ({ transcription, audioUrl, diaryEntry, onFinished }, ref) => {
 
     const { noted } = GlobalState();
 
@@ -71,55 +71,86 @@ const SyncedTranscriptTypewriter = forwardRef<SyncedTranscriptTypewriterRef, Syn
 
       if (!transcription || !transcription.segments?.length) return;
 
-      const chars: CharData[] = [];
+      // 1) Build a flat list of timed characters from transcription segments.
+      // Each character within a segment is given an interpolated reveal time.
+      const segChars: CharData[] = [];
       transcription.segments.forEach((seg) => {
         const start = Math.max(0, seg.start ?? 0);
         const end = Math.max(start, seg.end ?? start);
         const duration = end - start;
-        const text = (seg.text ?? "").replace(/\s+/g, " ").trim();
+        // Keep a single space between words; do NOT trim so we preserve gaps between segments.
+        const text = (seg.text ?? "").replace(/\s+/g, " ");
 
         if (!text) return;
 
         const arr = Array.from(text);
         const len = arr.length;
         if (len === 1) {
-          chars.push({ char: arr[0], t: start });
+          segChars.push({ char: arr[0], t: start });
           return;
         }
-        if (len > 1) {
-          for (let i = 0; i < len; i++) {
-            const r = i / (len - 1);
-            const t = start + duration * r;
-            chars.push({ char: arr[i], t });
-          }
+        for (let i = 0; i < len; i++) {
+          const r = i / (len - 1);
+          const t = start + duration * r;
+          segChars.push({ char: arr[i], t });
         }
       });
 
-      chars.sort((a, b) => a.t - b.t);
+      segChars.sort((a, b) => a.t - b.t);
 
-      // Insert a line break after the date (tolerates ordinal suffixes like "17th")
-      if (dateText) {
-        const pattern = dateText
-          .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-          .replace(/(\d+)/, "$1(?:st|nd|rd|th)?");
-        const dateRe = new RegExp(pattern + "\\.?");
-        const fullText = chars.map(c => c.char).join("");
-        const match = fullText.match(dateRe);
-        if (match && match.index != null) {
-          const target = match.index + match[0].length;
-          let count = 0;
-          for (let i = 0; i < chars.length; i++) {
-            count += chars[i].char.length;
-            if (count >= target) {
-              chars.splice(i + 1, 0, { char: "\n\n", t: chars[i].t });
-              break;
-            }
-          }
-        }
+      // 2) Align the original diaryEntry (source of truth for text + line breaks)
+      //    to the transcribed segment timings. Each non-whitespace diary char
+      //    inherits the reveal time of the nearest matching transcribed char.
+      //    Whitespace (including "\n\n" paragraph breaks) inherits the previous
+      //    timing so paragraph breaks appear right after the prior word.
+      if (!diaryEntry || diaryEntry.length === 0) {
+        // No diary text available; fall back to raw segment chars.
+        timedCharsRef.current = segChars;
+        return;
       }
 
-      timedCharsRef.current = chars;
-    }, [transcription, dateText]);
+      const norm = (c: string) => c.toLowerCase();
+      const isWS = (c: string) => /\s/.test(c);
+
+      const diaryChars = Array.from(diaryEntry);
+      const aligned: CharData[] = [];
+      let segIdx = 0;
+      let lastT = segChars[0]?.t ?? 0;
+      const LOOKAHEAD = 12;
+
+      for (let i = 0; i < diaryChars.length; i++) {
+        const c = diaryChars[i];
+
+        if (isWS(c)) {
+          aligned.push({ char: c, t: lastT });
+          continue;
+        }
+
+        // Look ahead in the segment stream for a matching non-whitespace char.
+        let foundIdx = -1;
+        let scanned = 0;
+        for (let j = segIdx; j < segChars.length && scanned < LOOKAHEAD; j++) {
+          const sc = segChars[j];
+          if (isWS(sc.char)) continue;
+          scanned++;
+          if (norm(sc.char) === norm(c)) {
+            foundIdx = j;
+            break;
+          }
+        }
+
+        if (foundIdx >= 0) {
+          lastT = segChars[foundIdx].t;
+          segIdx = foundIdx + 1;
+        }
+        // If no match found, keep lastT and don't advance segIdx (diary char
+        // is likely punctuation or text missing from the transcription).
+
+        aligned.push({ char: c, t: lastT });
+      }
+
+      timedCharsRef.current = aligned;
+    }, [transcription, diaryEntry]);
 
     useEffect(() => {
       if (!audioUrl) return;
