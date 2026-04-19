@@ -39,18 +39,6 @@ export function useEffectsControls() {
     intensity: { value: 0.1, min: 0, max: 2, step: 0.01, label: 'Intensity' },
   }, { collapsed: true });
 
-  const godraysParams = useControls('Effects.Godrays', {
-    enabled: { value: false, label: 'Enable Godrays' },
-    raymarchSteps: { value: 60, min: 24, max: 120, step: 1 },
-    density: { value: 10, min: 0, max: 10, step: 0.01 },
-    maxDensity: { value: 10, min: 0, max: 10, step: 0.01 },
-    distanceAttenuation: { value: 15, min: 0, max: 50, step: 0.1 },
-    blendColor: { value: '#212121', label: 'Blend Color' },
-    edgeRadius: { value: 3, min: 0, max: 5, step: 1 },
-    edgeStrength: { value: 4.2, min: 0, max: 5, step: 0.1 },
-  }, { collapsed: true });
-
-
   const dof = useMemo(() => {
     return {
       enabled: dofParamsTPS.enabled,
@@ -73,7 +61,6 @@ export function useEffectsControls() {
       exposure: toneMappingParams.exposure,
     },
     dof,
-    godrays: godraysParams,
     noise: {
       enabled: noiseParams.enabled,
       intensity: noiseParams.intensity,
