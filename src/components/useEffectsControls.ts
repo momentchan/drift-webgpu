@@ -28,6 +28,17 @@ export function useEffectsControls() {
     premultiply: { value: true, label: 'Premultiply' },
   }, { collapsed: true });
 
+  const trailParams = useControls('Effects.Trail', {
+    enabled: { value: true, label: 'Enable Trail' },
+    decay: { value: 0.9, min: 0, max: 0.99, step: 0.01, label: 'Decay' },
+    blendMode: {
+      value: 'mix' as 'additive' | 'max' | 'screen' | 'mix',
+      options: ['additive', 'max', 'screen', 'mix'] as const,
+      label: 'Blend',
+    },
+    intensity: { value: 0.1, min: 0, max: 2, step: 0.01, label: 'Intensity' },
+  }, { collapsed: true });
+
   const godraysParams = useControls('Effects.Godrays', {
     enabled: { value: false, label: 'Enable Godrays' },
     raymarchSteps: { value: 60, min: 24, max: 120, step: 1 },
@@ -67,6 +78,12 @@ export function useEffectsControls() {
       enabled: noiseParams.enabled,
       intensity: noiseParams.intensity,
       premultiply: noiseParams.premultiply,
+    },
+    trail: {
+      enabled: trailParams.enabled,
+      decay: trailParams.decay,
+      blendMode: trailParams.blendMode as 'additive' | 'max' | 'screen' | 'mix',
+      intensity: trailParams.intensity,
     },
   };
 }
