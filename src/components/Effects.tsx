@@ -27,9 +27,9 @@ import { dof } from "three/addons/tsl/display/DepthOfFieldNode.js";
 import { useEffectsControls } from "./useEffectsControls";
 
 /**
- * WebGPU TSL post-processing: scene pass (color + depth + viewZ), optional trail
- * from a compute pass, then DoF, bloom, and film grain. Trail reads a separate
- * base FBO so post-processed bloom/noise does not feed back into history.
+ * WebGPU TSL display pipeline (THREE.RenderPipeline): scene pass (color + depth + viewZ),
+ * optional trail from a compute pass, then DoF, bloom, and film grain. Trail reads a
+ * separate base FBO so post-processed bloom/noise does not feed back into history.
  */
 
 // Closer to the origin = stronger bokeh; at this distance, bokeh matches the Leva "bokehScale" slider.
@@ -51,7 +51,7 @@ export default function Effects() {
   const resW = Math.max(1, Math.floor(size.width * dpr * 0.25));
   const resH = Math.max(1, Math.floor(size.height * dpr * 0.25));
 
-  const postProcessingRef = useRef<THREE.PostProcessing | null>(null);
+  const renderPipelineRef = useRef<THREE.RenderPipeline | null>(null);
   const focusTarget = useMemo(() => new THREE.Vector3(0, 0, 0), []);
   const cameraWorldPos = useMemo(() => new THREE.Vector3(), []);
 
@@ -176,8 +176,8 @@ export default function Effects() {
       return;
     }
 
-    const pp = new THREE.PostProcessing(gl);
-    postProcessingRef.current = pp;
+    const pipeline = new THREE.RenderPipeline(gl);
+    renderPipelineRef.current = pipeline;
 
     const scenePass = pass(scene, camera);
     const scenePassColor = scenePass.getTextureNode("output");
@@ -236,11 +236,11 @@ export default function Effects() {
       finalNode = finalNode.add(noiseContribution);
     }
 
-    pp.outputNode = finalNode;
-    pp.needsUpdate = true;
+    pipeline.outputNode = finalNode;
+    pipeline.needsUpdate = true;
 
     return () => {
-      postProcessingRef.current = null;
+      renderPipelineRef.current = null;
     };
   }, [
     gl,
@@ -266,8 +266,8 @@ export default function Effects() {
       uParams.current.focusDist.value = camDist;
     }
 
-    const pp = postProcessingRef.current;
-    if (!pp) return;
+    const pipeline = renderPipelineRef.current;
+    if (!pipeline) return;
 
     const prevTarget = gl.getRenderTarget();
 
@@ -289,7 +289,7 @@ export default function Effects() {
     }
 
     gl.setRenderTarget(prevTarget);
-    pp.render();
+    pipeline.render();
   }, 1);
 
   return null;
