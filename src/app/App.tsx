@@ -26,7 +26,7 @@ interface ComponentProps {
 }
 
 function HandTrackingDriver() {
-  useHandTracking({ modelType: 'LITE', mirror: true });
+  useHandTracking();
   return null;
 }
 

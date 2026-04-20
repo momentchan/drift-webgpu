@@ -1,66 +1,69 @@
 import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { CameraManager } from 'camera-manager';
-import type { HandLandmarkManagerOptions } from '@core/interaction/index.ts';
 import { handStore } from '@core/interaction/store';
 
 type Landmark = { x: number; y: number; z: number };
 type HandLandmarks = Landmark[][];
 
-// Lower = snappier, higher = smoother.  Tuned for 30 fps detection → 60+ fps render.
-const SMOOTHING = 0.75;
+// Lower = snappier, higher = smoother.
+const SMOOTHING = 0.5;
 
-/**
- * Exponentially smooth `current` toward `target`.
- * Frame-rate independent: `alpha` is pre-computed from delta time.
- */
-function smoothToward(
+const ALIVE_DURATION_MS = 150;
+
+function smoothTowardInPlace(
   current: HandLandmarks,
   target: HandLandmarks,
   alpha: number,
-): HandLandmarks {
-  const out: HandLandmarks = [];
+) {
+  if (current.length !== target.length) {
+    current.length = 0;
+    for (let h = 0; h < target.length; h++) {
+      const src = target[h];
+      const copy: Landmark[] = new Array(src.length);
+      for (let i = 0; i < src.length; i++) {
+        const p = src[i];
+        copy[i] = { x: p.x, y: p.y, z: p.z };
+      }
+      current.push(copy);
+    }
+    return;
+  }
+
   for (let h = 0; h < target.length; h++) {
-    const hand = target[h];
-    const prev = current[h];
-    if (!prev || prev.length !== hand.length) {
-      // First frame for this hand — snap immediately
-      out.push(hand.map((p) => ({ x: p.x, y: p.y, z: p.z })));
+    const tHand = target[h];
+    const cHand = current[h];
+    // Hand landmark count is fixed at 21 by MediaPipe, but guard anyway
+    if (cHand.length !== tHand.length) {
+      cHand.length = 0;
+      for (let i = 0; i < tHand.length; i++) {
+        const p = tHand[i];
+        cHand.push({ x: p.x, y: p.y, z: p.z });
+      }
       continue;
     }
-    const result: Landmark[] = new Array(hand.length);
-    for (let i = 0; i < hand.length; i++) {
-      const s = prev[i];
-      const t = hand[i];
-      result[i] = {
-        x: s.x + (t.x - s.x) * alpha,
-        y: s.y + (t.y - s.y) * alpha,
-        z: s.z + (t.z - s.z) * alpha,
-      };
+    for (let i = 0; i < tHand.length; i++) {
+      const c = cHand[i];
+      const t = tHand[i];
+      c.x += (t.x - c.x) * alpha;
+      c.y += (t.y - c.y) * alpha;
+      c.z += (t.z - c.z) * alpha;
     }
-    out.push(result);
   }
-  return out;
+}
+
+export interface WebSocketTrackingOptions {
+  url?: string;
 }
 
 /**
- * Offloads MediaPipe hand detection to a Web Worker and smooths landmarks
- * every render frame for jitter-free, full-framerate hand positions.
- *
- * Frame capture uses requestVideoFrameCallback so detection is perfectly
- * aligned with the camera's native framerate — no wasted captures and
- * no polling overhead in the render loop.
+ * Receives hand tracking data via WebSocket from a local Python backend.
+ * Bypasses browser camera and heavy ML calculations entirely.
  */
-export function useHandTracking(
-  options: HandLandmarkManagerOptions = { modelType: 'LITE', mirror: true },
-) {
-  const workerRef = useRef<Worker | null>(null);
-  const cameraRef = useRef<CameraManager | null>(null);
-  const ready = useRef(false);
-  const pendingDetect = useRef(false);
-  const vfcId = useRef(0);
+export function useHandTracking(options: WebSocketTrackingOptions = {}) {
+  // Default to localhost, port 8765 as set in the Python server
+  const { url = 'ws://127.0.0.1:8765' } = options;
 
-  // Latest raw result from the worker (target to smooth toward)
+  // Latest raw result from the WebSocket (target to smooth toward)
   const targetLandmarks = useRef<HandLandmarks>([]);
   const targetWorld = useRef<HandLandmarks>([]);
 
@@ -68,123 +71,101 @@ export function useHandTracking(
   const smoothedLandmarks = useRef<HandLandmarks>([]);
   const smoothedWorld = useRef<HandLandmarks>([]);
 
+  const hasConnectedOnce = useRef(false);
+  const lastUpdateTime = useRef(0);
+
   useEffect(() => {
     let disposed = false;
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout>;
 
-    // Fires every time the camera produces a new video frame.
-    // Captures an ImageBitmap and transfers it to the worker.
-    const onVideoFrame = () => {
-      const video = cameraRef.current?.video;
-      const worker = workerRef.current;
-      if (!video || !worker || !ready.current || disposed) {
-        if (video && !disposed) {
-          vfcId.current = (video as any).requestVideoFrameCallback(onVideoFrame);
-        }
-        return;
-      }
+    const connect = () => {
+      if (disposed) return;
 
-      if (!pendingDetect.current && video.readyState >= 2) {
-        createImageBitmap(video).then((frame) => {
-          if (!workerRef.current || disposed) { frame.close(); return; }
-          pendingDetect.current = true;
-          workerRef.current.postMessage(
-            { type: 'detect', data: { frame, timestamp: performance.now() } },
-            [frame],
-          );
-        });
-      }
+      ws = new WebSocket(url);
 
-      vfcId.current = (video as any).requestVideoFrameCallback(onVideoFrame);
-    };
+      ws.onopen = () => {
+        hasConnectedOnce.current = true;
+        console.log(`[HandTracking] WebSocket connected to ${url}`);
+      };
 
-    const setup = async () => {
-      const camera = new CameraManager({
-        width: 320,
-        height: 240,
-        fps: 20,
-      } as any);
-      await camera.start();
-      if (disposed) { camera.dispose(); return; }
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          // Fallback to empty array if data fields are missing
+          targetLandmarks.current = data.landmarks ?? [];
+          targetWorld.current = data.worldLandmarks ?? [];
 
-      cameraRef.current = camera;
-
-      if (camera.video) {
-        document.body.appendChild(camera.video);
-        camera.video.style.display = 'none';
-        handStore.video = camera.video;
-      }
-
-      const worker = new Worker('/handTracking.worker.js');
-
-      worker.onmessage = (e: MessageEvent) => {
-        if (disposed) return;
-
-        switch (e.data.type) {
-          case 'ready':
-            ready.current = true;
-            if (camera.video) {
-              vfcId.current = (camera.video as any).requestVideoFrameCallback(onVideoFrame);
-            }
-            break;
-
-          case 'results': {
-            const d = e.data.data;
-            targetLandmarks.current = d.landmarks ?? [];
-            targetWorld.current = d.worldLandmarks ?? [];
-            pendingDetect.current = false;
-            break;
+          // Only stamp when we actually have hands — empty packets shouldn't
+          // keep the "alive" timer refreshed.
+          if (targetLandmarks.current.length > 0) {
+            lastUpdateTime.current = performance.now();
           }
 
-          case 'error':
-            console.error('[useHandTracking] worker error:', e.data.data);
-            break;
+        } catch (err) {
+          console.error('[HandTracking] Error parsing WebSocket message:', err);
         }
       };
 
-      worker.postMessage({
-        type: 'init',
-        data: { numHands: options.numHands ?? 2 },
-      });
+      ws.onerror = (err) => {
+        // Stay silent during startup (backend not up yet). Only surface
+        // the error if we were previously connected and got dropped.
+        if (hasConnectedOnce.current) {
+          // console.error('[HandTracking] WebSocket error:', err);
+        }
+      };
 
-      workerRef.current = worker;
+      ws.onclose = () => {
+        if (!disposed) {
+          if (hasConnectedOnce.current) {
+            console.warn('[HandTracking] Connection lost. Retrying in 2 seconds...');
+          } else {
+            console.log('[HandTracking] Waiting for tracking backend to initialize...');
+          }
+          reconnectTimer = setTimeout(connect, 2000);
+        }
+      };
     };
 
-    setup().catch((e) => console.error('[useHandTracking] init error:', e));
+    // Initial connection
+    connect();
 
     return () => {
       disposed = true;
-      const video = cameraRef.current?.video;
-      if (video && vfcId.current) {
-        (video as any).cancelVideoFrameCallback(vfcId.current);
+      clearTimeout(reconnectTimer);
+      if (ws) {
+        ws.close();
       }
-      workerRef.current?.postMessage({ type: 'dispose' });
-      workerRef.current?.terminate();
-      workerRef.current = null;
-      cameraRef.current?.dispose();
-      cameraRef.current = null;
-      handStore.video = null;
-      ready.current = false;
+      
+      // Reset store on unmount
+      handStore.landmarks = [];
+      handStore.worldLandmarks = [];
     };
-  }, []);
+  }, [url]);
 
   useFrame((_state, delta) => {
     const target = targetLandmarks.current;
     const targetW = targetWorld.current;
+    const timedOut =
+      performance.now() - lastUpdateTime.current > ALIVE_DURATION_MS;
 
-    if (target.length === 0) {
-      handStore.landmarks = [];
-      handStore.worldLandmarks = [];
-      smoothedLandmarks.current = [];
-      smoothedWorld.current = [];
+    if (target.length === 0 || timedOut) {
+      if (smoothedLandmarks.current.length !== 0) {
+        smoothedLandmarks.current.length = 0;
+        smoothedWorld.current.length = 0;
+        handStore.landmarks = smoothedLandmarks.current;
+        handStore.worldLandmarks = smoothedWorld.current;
+      }
       return;
     }
 
     // Frame-rate independent smoothing factor
     const alpha = 1 - Math.pow(SMOOTHING, delta * 60);
 
-    smoothedLandmarks.current = smoothToward(smoothedLandmarks.current, target, alpha);
-    smoothedWorld.current = smoothToward(smoothedWorld.current, targetW, alpha);
+    smoothTowardInPlace(smoothedLandmarks.current, target, alpha);
+    smoothTowardInPlace(smoothedWorld.current, targetW, alpha);
 
+    // Store holds a stable reference; consumers should read values fresh each frame
     handStore.landmarks = smoothedLandmarks.current;
     handStore.worldLandmarks = smoothedWorld.current;
   });
